@@ -47,6 +47,8 @@ export type DockActivationPhase = "idle" | "detected" | "activating" | "active";
 type PersistedState = {
   pebbleId: number | null;
   onboarded: boolean;
+  /** Last dock the Pebble reported; the hardware re-reports it on connect. */
+  dockId: number | null;
   docks: Dock[];
 };
 
@@ -118,11 +120,16 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
             name: `Pebble ${saved.pebbleId}`,
             identifier: `PBL-${saved.pebbleId}`,
             connected: true,
-            charging: false,
+            charging: saved.dockId != null,
+            dock: saved.dockId ?? null,
           }));
         }
         setDocks(saved.docks ?? []);
         setOnboarded(Boolean(saved.onboarded));
+        if (saved.dockId != null && (saved.docks ?? []).some((d) => d.id === saved.dockId)) {
+          setPhase("active");
+          setRanActions(99);
+        }
       }
     } catch {
       /* ignore corrupt local state */
@@ -134,12 +141,17 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      const payload: PersistedState = { pebbleId: device.id, onboarded, docks };
+      const payload: PersistedState = {
+        pebbleId: device.id,
+        onboarded,
+        dockId: device.dock,
+        docks,
+      };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       /* storage unavailable */
     }
-  }, [hydrated, device.id, onboarded, docks]);
+  }, [hydrated, device.id, device.dock, onboarded, docks]);
 
   const log = useCallback((event: Omit<ActivityEvent, "id" | "at">) => {
     setActivity((prev) => [
