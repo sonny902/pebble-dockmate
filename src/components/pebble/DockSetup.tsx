@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Check, ChevronRight, Plus, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, Check, Sparkles } from "lucide-react";
 import { ActionPicker } from "./ActionPicker";
 import { ActionRow } from "./ActionRow";
 import { PebbleVisual } from "./PebbleVisual";
@@ -8,67 +8,101 @@ import { EmptyState, Group } from "./primitives";
 import { Button } from "@/components/ui/button";
 import { DOCK_NAME_SUGGESTIONS, actionLabel } from "@/lib/pebble/catalog";
 import { usePebble } from "@/lib/pebble/store";
-import type { DockAction } from "@/lib/pebble/types";
+import type { Dock, DockAction } from "@/lib/pebble/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type Step = 0 | 1 | 2 | 3 | 4;
+type Step = "waiting" | "duplicate" | "name" | "actions" | "done";
 
-const STEP_LABELS = ["Detect", "Name", "Actions", "Review"];
+const PROGRESS: Step[] = ["waiting", "name", "actions", "done"];
 
-export function DockSetup({ existingDockId }: { existingDockId?: number | undefined }) {
+/**
+ * Hardware-led dock setup: the Pebble reports the dock it has been placed on,
+ * the user never types an identifier.
+ */
+export function DockSetup({
+  onFinish,
+  onExit,
+}: {
+  /** Called after the dock is saved (used to end first-run onboarding). */
+  onFinish?: (() => void) | undefined;
+  onExit?: (() => void) | undefined;
+}) {
   const navigate = useNavigate();
-  const { detectNewDock, saveDock, getDock, device } = usePebble();
+  const { detectDockPlacement, saveDock, getDock, device, docks } = usePebble();
+  const [first] = useState(() => docks.length === 0);
 
-  const existing = existingDockId != null ? getDock(existingDockId) : undefined;
+  const [step, setStep] = useState<Step>("waiting");
+  const [dockId, setDockId] = useState<number | null>(null);
+  const [existing, setExisting] = useState<Dock | null>(null);
+  const [detecting, setDetecting] = useState(true);
+  const [name, setName] = useState("");
+  const [actions, setActions] = useState<DockAction[]>([]);
 
-  const [step, setStep] = useState<Step>(existing ? 2 : 0);
-  const [dockId, setDockId] = useState<number | null>(existing?.id ?? null);
-  const [detecting, setDetecting] = useState(!existing);
-  const [name, setName] = useState(existing?.name ?? "");
-  const [actions, setActions] = useState<DockAction[]>(existing?.actions ?? []);
-
-  // Simulated hardware detection while the user places the Pebble.
+  // Waiting for the Pebble to report a dock over Bluetooth.
   useEffect(() => {
     if (!detecting) return;
     const t = setTimeout(() => {
-      setDockId(detectNewDock());
+      const id = detectDockPlacement();
+      const known = getDock(id);
+      setDockId(id);
+      setExisting(known ?? null);
       setDetecting(false);
     }, 2600);
     return () => clearTimeout(t);
-  }, [detecting, detectNewDock]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detecting]);
 
-  const canContinue = useMemo(() => {
-    if (step === 0) return dockId != null;
-    if (step === 1) return name.trim().length > 0;
-    return true;
-  }, [step, dockId, name]);
+  // Brief "Dock detected" beat before moving on.
+  useEffect(() => {
+    if (detecting || step !== "waiting" || dockId == null) return;
+    const t = setTimeout(() => setStep(existing ? "duplicate" : "name"), 1000);
+    return () => clearTimeout(t);
+  }, [detecting, step, dockId, existing]);
+
+  const goBack = () => {
+    if (step === "waiting" || step === "duplicate" || step === "done") {
+      if (onExit) onExit();
+      else navigate({ to: "/docks" });
+      return;
+    }
+    setStep(step === "actions" ? "name" : "waiting");
+  };
+
+  const finish = () => {
+    if (onFinish) onFinish();
+    else navigate({ to: "/docks" });
+  };
 
   const handleSave = () => {
     if (dockId == null) return;
     saveDock({ id: dockId, name: name.trim(), actions });
-    setStep(4);
+    toast.success(`${name.trim()} saved`, {
+      description: `${actions.length} action${actions.length === 1 ? "" : "s"} configured`,
+    });
+    setStep("done");
   };
+
+  const progressIndex = Math.max(0, PROGRESS.indexOf(step === "duplicate" ? "waiting" : step));
 
   return (
     <div className="mx-auto w-full max-w-xl px-4 pt-6 pb-10 sm:px-6 lg:pt-10">
-      {/* header */}
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
         <button
           type="button"
-          onClick={() => (step === 0 || step === 4 ? navigate({ to: "/docks" }) : setStep((s) => (s - 1) as Step))}
+          onClick={goBack}
           className="press hover:bg-accent -ml-2 flex h-10 w-10 items-center justify-center rounded-full"
           aria-label="Back"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="flex justify-center gap-1.5">
-          {STEP_LABELS.map((label, i) => (
+          {PROGRESS.map((s, i) => (
             <span
-              key={label}
+              key={s}
               className={cn(
                 "h-1 rounded-full transition-all duration-500",
-                i <= Math.min(step, 3) ? "bg-primary w-7" : "bg-muted w-4",
+                i <= progressIndex ? "bg-primary w-7" : "bg-muted w-4",
               )}
             />
           ))}
@@ -77,41 +111,33 @@ export function DockSetup({ existingDockId }: { existingDockId?: number | undefi
       </div>
 
       <div key={step} className="animate-rise mt-8">
-        {step === 0 ? (
-          <StepDetect detecting={detecting} dockId={dockId} onContinue={() => setStep(1)} />
+        {step === "waiting" ? <StepWaiting detecting={detecting} first={first} /> : null}
+
+        {step === "duplicate" && existing ? (
+          <StepDuplicate dock={existing} onExit={onExit} />
         ) : null}
 
-        {step === 1 ? (
-          <StepName name={name} setName={setName} onContinue={() => setStep(2)} canContinue={canContinue} />
+        {step === "name" ? (
+          <StepName name={name} setName={setName} onContinue={() => setStep("actions")} />
         ) : null}
 
-        {step === 2 ? (
+        {step === "actions" ? (
           <StepActions
             name={name}
             actions={actions}
             setActions={setActions}
-            onContinue={() => setStep(3)}
-          />
-        ) : null}
-
-        {step === 3 ? (
-          <StepReview
-            name={name}
-            actions={actions}
-            onEdit={() => setStep(2)}
             onSave={handleSave}
-            dockId={dockId}
           />
         ) : null}
 
-        {step === 4 ? <StepDone name={name} /> : null}
+        {step === "done" ? <StepDone name={name} actions={actions} onFinish={finish} /> : null}
       </div>
 
-      {device.connected ? null : (
+      {step === "waiting" && !device.connected ? (
         <p className="text-muted-foreground mt-6 text-center text-[0.8125rem]">
           Pebble isn’t nearby — setup will continue when it reconnects.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -120,28 +146,23 @@ function Title({ title, subtitle }: { title: string; subtitle?: string | undefin
   return (
     <div className="mb-7 text-center">
       <h1 className="text-balance-tight text-2xl font-semibold">{title}</h1>
-      {subtitle ? <p className="text-muted-foreground mt-2 text-[0.9375rem]">{subtitle}</p> : null}
+      {subtitle ? (
+        <p className="text-muted-foreground mt-2 text-[0.9375rem] text-pretty">{subtitle}</p>
+      ) : null}
     </div>
   );
 }
 
-function StepDetect({
-  detecting,
-  dockId,
-  onContinue,
-}: {
-  detecting: boolean;
-  dockId: number | null;
-  onContinue: () => void;
-}) {
-  const [showId, setShowId] = useState(false);
+function StepWaiting({ detecting, first }: { detecting: boolean; first: boolean }) {
   return (
     <div>
       <Title
-        title={detecting ? "Set up your dock" : "Dock detected"}
+        title={detecting ? (first ? "Now set up your first dock" : "Add a new dock") : "Dock detected"}
         subtitle={
           detecting
-            ? "Place Pebble on the dock to continue."
+            ? first
+              ? "Place your Pebble on the dock you want to set up."
+              : "Place your Pebble on the new dock."
             : "This dock is new. Let’s make it yours."
         }
       />
@@ -151,7 +172,7 @@ function StepDetect({
           {detecting ? (
             <div className="text-muted-foreground flex items-center gap-2 text-sm">
               <span className="border-primary/30 border-t-primary h-3.5 w-3.5 animate-spin rounded-full border-2" />
-              Listening for a dock…
+              Waiting for a dock…
             </div>
           ) : (
             <div className="text-success animate-check flex items-center gap-2 text-sm font-medium">
@@ -160,27 +181,30 @@ function StepDetect({
           )}
         </div>
       </div>
+    </div>
+  );
+}
 
-      <Button
-        size="lg"
-        className="mt-6 h-12 w-full rounded-[var(--radius-xl)] text-[0.9375rem]"
-        disabled={detecting}
-        onClick={onContinue}
-      >
-        Continue
+function StepDuplicate({ dock, onExit }: { dock: Dock; onExit?: (() => void) | undefined }) {
+  return (
+    <div>
+      <Title
+        title={`${dock.name} is already set up.`}
+        subtitle="This dock is already connected to your Pebble."
+      />
+      <div className="surface flex flex-col items-center px-6 py-12">
+        <PebbleVisual size="lg" state="docked" />
+        <p className="text-muted-foreground mt-8 text-sm">
+          {dock.actions.length === 0
+            ? "No actions yet"
+            : `${dock.actions.length} action${dock.actions.length === 1 ? "" : "s"} configured`}
+        </p>
+      </div>
+      <Button asChild size="lg" className="mt-6 h-12 w-full rounded-[var(--radius-xl)]">
+        <Link to="/docks/$dockId" params={{ dockId: String(dock.id) }} onClick={onExit}>
+          View {dock.name}
+        </Link>
       </Button>
-
-      {!detecting && dockId != null ? (
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            onClick={() => setShowId((s) => !s)}
-            className="text-muted-foreground hover:text-foreground text-[0.8125rem]"
-          >
-            {showId ? `Identifier · Dock ${dockId}` : "Details"}
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -189,16 +213,18 @@ function StepName({
   name,
   setName,
   onContinue,
-  canContinue,
 }: {
   name: string;
   setName: (v: string) => void;
   onContinue: () => void;
-  canContinue: boolean;
 }) {
+  const canContinue = name.trim().length > 0;
   return (
     <div>
-      <Title title="Name your dock" subtitle="Choose something you’ll recognise instantly." />
+      <Title
+        title="What would you like to call this dock?"
+        subtitle="Choose something you’ll recognise instantly."
+      />
       <input
         autoFocus
         value={name}
@@ -238,105 +264,66 @@ function StepActions({
   name,
   actions,
   setActions,
-  onContinue,
+  onSave,
 }: {
   name: string;
   actions: DockAction[];
   setActions: (a: DockAction[]) => void;
-  onContinue: () => void;
+  onSave: () => void;
 }) {
   return (
     <div>
       <Title
-        title="What should happen here?"
-        subtitle={`Choose what runs when Pebble is placed on ${name || "this dock"}.`}
+        title="What should happen when your Pebble is placed here?"
+        subtitle={`These run automatically on ${name || "this dock"}.`}
       />
       <ActionPicker selected={actions} onChange={setActions} />
+
+      {actions.length > 0 ? (
+        <div className="mt-6">
+          <p className="text-muted-foreground mb-2.5 px-1 text-[0.8125rem] font-medium tracking-wide uppercase">
+            When Pebble is placed on {name || "this dock"}
+          </p>
+          <Group>
+            {actions.map((a, i) => (
+              <ActionRow key={a.id} action={a} index={i} />
+            ))}
+          </Group>
+        </div>
+      ) : (
+        <div className="mt-6">
+          <Group>
+            <EmptyState
+              icon={<Sparkles className="h-5 w-5" />}
+              title="Make this dock useful."
+              description="Search above to add what should happen when Pebble arrives."
+            />
+          </Group>
+        </div>
+      )}
+
       <div className="bg-background/80 sticky bottom-20 mt-5 backdrop-blur lg:bottom-4">
         <Button
           size="lg"
           className="h-12 w-full rounded-[var(--radius-xl)] text-[0.9375rem]"
-          onClick={onContinue}
+          onClick={onSave}
         >
-          {actions.length === 0
-            ? "Skip for now"
-            : `Continue with ${actions.length} action${actions.length === 1 ? "" : "s"}`}
+          {actions.length === 0 ? "Skip for now" : "Save Dock"}
         </Button>
       </div>
     </div>
   );
 }
 
-function StepReview({
+function StepDone({
   name,
   actions,
-  onEdit,
-  onSave,
-  dockId,
+  onFinish,
 }: {
   name: string;
   actions: DockAction[];
-  onEdit: () => void;
-  onSave: () => void;
-  dockId: number | null;
+  onFinish: () => void;
 }) {
-  return (
-    <div>
-      <Title title={name || "New dock"} subtitle="Review before saving." />
-      {actions.length === 0 ? (
-        <Group>
-          <EmptyState
-            icon={<Sparkles className="h-5 w-5" />}
-            title="Make this dock useful."
-            description="Choose what should happen when Pebble arrives."
-            action={
-              <Button variant="secondary" onClick={onEdit} className="rounded-full">
-                <Plus className="h-4 w-4" /> Add action
-              </Button>
-            }
-          />
-        </Group>
-      ) : (
-        <>
-          <p className="text-muted-foreground mb-2.5 px-1 text-[0.8125rem] font-medium tracking-wide uppercase">
-            When Pebble is placed here
-          </p>
-          <Group>
-            {actions.map((a, i) => (
-              <ActionRow key={a.id} action={a} index={i} />
-            ))}
-            <button
-              type="button"
-              onClick={onEdit}
-              className="press text-primary hover:bg-accent/60 flex w-full items-center gap-2 px-5 py-3.5 text-[0.9375rem] font-medium"
-            >
-              <Plus className="h-4 w-4" /> Add action
-            </button>
-          </Group>
-        </>
-      )}
-
-      <Button
-        size="lg"
-        className="mt-7 h-12 w-full rounded-[var(--radius-xl)] text-[0.9375rem]"
-        onClick={() => {
-          onSave();
-          toast.success(`${name} saved`, { description: `${actions.length} action${actions.length === 1 ? "" : "s"} configured` });
-        }}
-      >
-        Save Dock
-      </Button>
-      {dockId != null ? (
-        <p className="text-muted-foreground/70 mt-3 text-center text-[0.75rem]">
-          Identifier · Dock {dockId}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function StepDone({ name }: { name: string }) {
-  const navigate = useNavigate();
   return (
     <div className="animate-settle flex flex-col items-center pt-6 text-center">
       <div className="bg-success-soft text-success flex h-16 w-16 items-center justify-center rounded-full">
@@ -344,23 +331,28 @@ function StepDone({ name }: { name: string }) {
       </div>
       <h1 className="text-balance-tight mt-6 text-2xl font-semibold">{name} is ready</h1>
       <p className="text-muted-foreground mt-2 max-w-xs text-[0.9375rem] text-pretty">
-        Place Pebble here anytime to activate your workspace.
+        Whenever you place Pebble here, we’ll activate your workspace.
       </p>
+
+      {actions.length > 0 ? (
+        <div className="mt-7 w-full text-left">
+          <Group>
+            {actions.map((a) => (
+              <div
+                key={a.id}
+                className="flex items-center gap-3 px-5 py-3.5 text-[0.9375rem]"
+              >
+                <Check className="text-success h-4 w-4 shrink-0" />
+                <span className="truncate">{actionLabel(a)}</span>
+              </div>
+            ))}
+          </Group>
+        </div>
+      ) : null}
+
       <div className="mt-8 flex w-full flex-col gap-2.5">
-        <Button
-          size="lg"
-          className="h-12 w-full rounded-[var(--radius-xl)]"
-          onClick={() => navigate({ to: "/docks" })}
-        >
+        <Button size="lg" className="h-12 w-full rounded-[var(--radius-xl)]" onClick={onFinish}>
           Done
-        </Button>
-        <Button
-          variant="ghost"
-          size="lg"
-          className="h-12 w-full rounded-[var(--radius-xl)]"
-          onClick={() => navigate({ to: "/docks/new" })}
-        >
-          Set up another dock <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
     </div>

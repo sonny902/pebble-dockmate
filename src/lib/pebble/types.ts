@@ -7,6 +7,8 @@
  */
 
 export type DeviceState = {
+  /** Physical Pebble ID, printed on the packaging. Null until paired. */
+  id: number | null;
   connected: boolean;
   battery: number;
   charging: boolean;
@@ -16,6 +18,12 @@ export type DeviceState = {
   firmware: string;
   identifier: string;
   signal: "strong" | "fair" | "weak";
+};
+
+/** A Pebble seen during a Bluetooth scan. */
+export type NearbyPebble = {
+  id: number;
+  rssi: string;
 };
 
 export type ActionType =

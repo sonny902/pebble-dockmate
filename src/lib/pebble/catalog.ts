@@ -128,9 +128,9 @@ export function actionLabel(action: DockAction): string {
 
 export const DOCK_NAME_SUGGESTIONS = [
   "Desk",
-  "Bedroom",
   "Office",
-  "Meeting Room",
+  "Bedroom",
+  "Living Room",
   "Car",
-  "Home",
+  "Meeting Room",
 ];

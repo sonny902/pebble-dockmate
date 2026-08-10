@@ -1,8 +1,17 @@
 import type { ReactNode } from "react";
 import { DesktopSidebar, MobileNavigation } from "./Navigation";
+import { Onboarding } from "./Onboarding";
+import { usePebble } from "@/lib/pebble/store";
 import { cn } from "@/lib/utils";
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const { hydrated, onboarded } = usePebble();
+
+  // Avoid a hydration mismatch: local state is restored after first paint.
+  if (!hydrated) return <div className="bg-background min-h-screen" />;
+
+  if (!onboarded) return <Onboarding />;
+
   return (
     <div className="min-h-screen">
       <DesktopSidebar />

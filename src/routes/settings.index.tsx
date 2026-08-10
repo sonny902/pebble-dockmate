@@ -35,7 +35,7 @@ export const Route = createFileRoute("/settings/")({
 });
 
 function Settings() {
-  const { device, docks, setDeviceConnected } = usePebble();
+  const { device, docks, setDeviceConnected, forgetPebble } = usePebble();
   const { preset } = useTheme();
   const [advanced, setAdvanced] = useState(false);
   const presetName = PRESETS.find((p) => p.id === preset)?.name ?? "Pebble";
@@ -188,6 +188,13 @@ function Settings() {
           onClick={() => setDeviceConnected(!device.connected)}
         >
           {device.connected ? "Disconnect Pebble" : "Reconnect Pebble"}
+        </Button>
+        <Button
+          variant="ghost"
+          className="text-muted-foreground mt-1 w-full rounded-full"
+          onClick={forgetPebble}
+        >
+          Forget this Pebble
         </Button>
       </div>
     </Page>
