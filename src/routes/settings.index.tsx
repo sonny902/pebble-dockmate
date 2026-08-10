@@ -80,10 +80,6 @@ function Settings() {
             </span>
             <ChevronRight className="text-muted-foreground h-4 w-4" />
           </Link>
-          <Link to="/docks" className="press hover:bg-accent/60 flex items-center justify-between px-5 py-3.5">
-            <span className="text-[0.9375rem] font-medium">All docks</span>
-            <ChevronRight className="text-muted-foreground h-4 w-4" />
-          </Link>
           <Link to="/docks/new" className="press hover:bg-accent/60 flex items-center justify-between px-5 py-3.5">
             <span className="text-[0.9375rem] font-medium">Add dock</span>
             <Plus className="text-muted-foreground h-4 w-4" />
