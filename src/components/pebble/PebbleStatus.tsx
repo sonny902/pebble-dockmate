@@ -29,17 +29,9 @@ export function PebbleStatus({
 }) {
   const docked = device.connected && dock != null;
 
-  const headline = !device.connected
-    ? "Pebble isn't nearby"
-    : docked
-      ? dock.name
-      : "Pebble is ready";
+  const headline = !device.connected ? device.name : docked ? dock.name : device.name;
 
-  const sub = !device.connected
-    ? "Bring it closer to reconnect"
-    : docked
-      ? "Pebble is active"
-      : "No dock detected";
+  const sub = !device.connected ? "Bring it closer to reconnect" : docked ? "Active" : "Ready";
 
   return (
     <div
@@ -64,7 +56,14 @@ export function PebbleStatus({
           <h2 className="text-balance-tight text-2xl font-semibold transition-all duration-500">
             {headline}
           </h2>
-          <p className="text-muted-foreground text-sm">{sub}</p>
+          <p
+            className={cn(
+              "text-sm font-medium",
+              docked ? "text-primary" : "text-muted-foreground",
+            )}
+          >
+            {sub}
+          </p>
         </div>
       </div>
 

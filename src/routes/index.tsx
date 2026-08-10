@@ -33,20 +33,10 @@ function Home() {
   return (
     <Page className="space-y-9 pb-6">
       <div className="flex items-center justify-between lg:hidden">
-        <h1 className="text-balance-tight text-[1.75rem] font-semibold">Pebble</h1>
+        <h1 className="text-balance-tight text-[1.75rem] font-semibold">{device.name}</h1>
       </div>
 
-      {!device.connected && docks.length === 0 ? (
-        <Group>
-          <EmptyState
-            icon={<Sparkles className="h-5 w-5" />}
-            title="Welcome to Pebble"
-            description="Connect your Pebble to get started."
-          />
-        </Group>
-      ) : (
-        <PebbleStatus device={device} dock={activeDock} />
-      )}
+      <PebbleStatus device={device} dock={activeDock} />
 
       {unconfiguredDockId != null ? (
         <Group>
