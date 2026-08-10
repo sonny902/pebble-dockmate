@@ -10,33 +10,74 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ActivityRouteImport } from './routes/activity'
+import { Route as DocksIndexRouteImport } from './routes/docks.index'
+import { Route as DocksDockIdRouteImport } from './routes/docks.$dockId'
+import { Route as DocksNewRouteImport } from './routes/docks.new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ActivityRoute = ActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocksIndexRoute = DocksIndexRouteImport.update({
+  id: '/docks/',
+  path: '/docks/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocksDockIdRoute = DocksDockIdRouteImport.update({
+  id: '/docks/$dockId',
+  path: '/docks/$dockId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocksNewRoute = DocksNewRouteImport.update({
+  id: '/docks/new',
+  path: '/docks/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
+  '/docks/$dockId': typeof DocksDockIdRoute
+  '/docks/new': typeof DocksNewRoute
+  '/docks/': typeof DocksIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
+  '/docks/$dockId': typeof DocksDockIdRoute
+  '/docks/new': typeof DocksNewRoute
+  '/docks': typeof DocksIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
+  '/docks/$dockId': typeof DocksDockIdRoute
+  '/docks/new': typeof DocksNewRoute
+  '/docks/': typeof DocksIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/activity' | '/docks/$dockId' | '/docks/new' | '/docks/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/activity' | '/docks/$dockId' | '/docks/new' | '/docks'
+  id:
+    '__root__' | '/' | '/activity' | '/docks/$dockId' | '/docks/new' | '/docks/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ActivityRoute: typeof ActivityRoute
+  DocksDockIdRoute: typeof DocksDockIdRoute
+  DocksNewRoute: typeof DocksNewRoute
+  DocksIndexRoute: typeof DocksIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,22 +89,44 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/activity': {
+      id: '/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof ActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docks/': {
+      id: '/docks/'
+      path: '/docks'
+      fullPath: '/docks/'
+      preLoaderRoute: typeof DocksIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docks/$dockId': {
+      id: '/docks/$dockId'
+      path: '/docks/$dockId'
+      fullPath: '/docks/$dockId'
+      preLoaderRoute: typeof DocksDockIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docks/new': {
+      id: '/docks/new'
+      path: '/docks/new'
+      fullPath: '/docks/new'
+      preLoaderRoute: typeof DocksNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ActivityRoute: ActivityRoute,
+  DocksDockIdRoute: DocksDockIdRoute,
+  DocksNewRoute: DocksNewRoute,
+  DocksIndexRoute: DocksIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
