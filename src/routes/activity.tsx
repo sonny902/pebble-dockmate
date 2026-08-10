@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Activity as ActivityIcon, BluetoothOff, Bluetooth, CircleСheckPlaceholder } from "lucide-react";
+import { Activity as ActivityIcon } from "lucide-react";
 import { Page } from "@/components/pebble/AppShell";
 import { EmptyState, Group, PageHeader, Section } from "@/components/pebble/primitives";
 import { usePebble } from "@/lib/pebble/store";
