@@ -70,17 +70,16 @@ function Settings() {
 
       <Section title="Docks">
         <Group>
-          <Row
-            icon={<SquareStack className="text-muted-foreground h-[1.15rem] w-[1.15rem]" />}
-            title="Manage docks"
-            subtitle={`${docks.length} configured`}
-            trailing={<ChevronRight className="h-4 w-4" />}
-            onClick={() => {}}
-            className="p-0"
-            as="div"
-          />
-        </Group>
-        <Group>
+          <Link to="/docks" className="press hover:bg-accent/60 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-5 py-3.5">
+            <SquareStack className="text-muted-foreground h-[1.15rem] w-[1.15rem]" />
+            <span className="min-w-0">
+              <span className="block text-[0.9375rem] font-medium">Manage docks</span>
+              <span className="text-muted-foreground block truncate text-[0.8125rem]">
+                {docks.length} configured
+              </span>
+            </span>
+            <ChevronRight className="text-muted-foreground h-4 w-4" />
+          </Link>
           <Link to="/docks" className="press hover:bg-accent/60 flex items-center justify-between px-5 py-3.5">
             <span className="text-[0.9375rem] font-medium">All docks</span>
             <ChevronRight className="text-muted-foreground h-4 w-4" />
