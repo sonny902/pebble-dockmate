@@ -15,6 +15,8 @@ function useActivePath() {
 
 export function MobileNavigation() {
   const pathname = useActivePath();
+  // Setup is a focused, full-screen flow.
+  if (pathname === "/docks/new") return null;
   return (
     <nav
       aria-label="Primary"
