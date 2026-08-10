@@ -226,6 +226,14 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
         return [...prev, { id, name, actions, enabled: true, createdAt: Date.now() }];
       });
       log({ kind: "configured", title: name, detail: "Dock configured" });
+      // If the Pebble is resting on this dock, it is live immediately.
+      setDevice((prev) => {
+        if (prev.dock === id) {
+          setPhase("active");
+          setRanActions(99);
+        }
+        return prev;
+      });
     },
     [log],
   );
