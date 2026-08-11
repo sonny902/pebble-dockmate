@@ -9,30 +9,45 @@ import { cn } from "@/lib/utils";
 
 type Stage = "scanning" | "found" | "connected" | "dock";
 
-/**
- * First-launch experience. The physical Pebble leads: discover it over
- * Bluetooth, pair it, then let it report the first dock.
- */
+/** First-launch experience driven by the real native Bluetooth adapter. */
 export function Onboarding() {
   const { discoverPebbles, pairPebble, completeOnboarding } = usePebble();
   const [stage, setStage] = useState<Stage>("scanning");
   const [found, setFound] = useState<NearbyPebble[]>([]);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<NearbyPebble | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const scan = async () => {
+    setError(null);
+    setFound([]);
+    setStage("scanning");
+    try {
+      const devices = await discoverPebbles();
+      setFound(devices);
+      setStage("found");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn’t scan for Pebbles.");
+      setStage("found");
+    }
+  };
 
   useEffect(() => {
-    if (stage !== "scanning") return;
-    const t = setTimeout(() => {
-      setFound(discoverPebbles());
-      setStage("found");
-    }, 2400);
-    return () => clearTimeout(t);
-  }, [stage, discoverPebbles]);
+    void scan();
+    // Initial discovery only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const select = (id: number) => {
-    setSelected(id);
-    pairPebble(id);
-    setStage("connected");
-    setTimeout(() => setStage("dock"), 1800);
+  const select = async (pebble: NearbyPebble) => {
+    setSelected(pebble);
+    setError(null);
+    try {
+      await pairPebble(pebble);
+      setStage("connected");
+      setTimeout(() => setStage("dock"), 1200);
+    } catch (err) {
+      setSelected(null);
+      setError(err instanceof Error ? err.message : "Couldn’t connect to that Pebble.");
+    }
   };
 
   if (stage === "dock") {
@@ -46,13 +61,15 @@ export function Onboarding() {
   return (
     <div className="bg-background flex min-h-screen flex-col items-center justify-center px-5 py-12">
       <div className="animate-rise w-full max-w-md">
-        {stage === "connected" && selected != null ? (
+        {stage === "connected" && selected ? (
           <div className="flex flex-col items-center text-center">
             <PebbleVisual size="lg" state="ready" />
             <div className="bg-success-soft text-success animate-check mt-8 flex h-12 w-12 items-center justify-center rounded-full">
               <Check className="h-6 w-6" strokeWidth={2.4} />
             </div>
-            <h1 className="text-balance-tight mt-6 text-2xl font-semibold">Pebble {selected}</h1>
+            <h1 className="text-balance-tight mt-6 text-2xl font-semibold">
+              {selected.name}
+            </h1>
             <p className="text-success mt-1.5 text-[0.9375rem] font-medium">Connected</p>
           </div>
         ) : (
@@ -81,39 +98,51 @@ export function Onboarding() {
                   <p className="text-muted-foreground mb-2.5 px-1 text-[0.8125rem] font-medium tracking-wide uppercase">
                     Nearby devices
                   </p>
-                  <div className="surface divide-y divide-[var(--color-hairline)] overflow-hidden">
-                    {found.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => select(p.id)}
-                        className="press hover:bg-accent/60 grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-5 py-4 text-left"
-                      >
-                        <span className="bg-muted flex h-10 w-10 items-center justify-center rounded-[38%]">
-                          <span className="bg-foreground/30 h-4 w-4 rounded-[40%]" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-[0.9375rem] font-medium">
-                            Pebble {p.id}
+
+                  {found.length > 0 ? (
+                    <div className="surface divide-y divide-[var(--color-hairline)] overflow-hidden">
+                      {found.map((p) => (
+                        <button
+                          key={p.identifier}
+                          type="button"
+                          onClick={() => void select(p)}
+                          className="press hover:bg-accent/60 grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-5 py-4 text-left"
+                        >
+                          <span className="bg-muted flex h-10 w-10 items-center justify-center rounded-[38%]">
+                            <span className="bg-foreground/30 h-4 w-4 rounded-[40%]" />
                           </span>
-                          <span className="text-muted-foreground block text-[0.8125rem]">
-                            {p.rssi}
+                          <span className="min-w-0">
+                            <span className="block truncate text-[0.9375rem] font-medium">
+                              {p.name}
+                            </span>
+                            <span className="text-muted-foreground block text-[0.8125rem]">
+                              {p.rssi}
+                            </span>
                           </span>
-                        </span>
-                        <ChevronRight className="text-muted-foreground/60 h-4 w-4" />
-                      </button>
-                    ))}
-                  </div>
+                          <ChevronRight className="text-muted-foreground/60 h-4 w-4" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="surface px-5 py-6 text-center">
+                      <p className="text-sm font-medium">No Pebbles found</p>
+                      <p className="text-muted-foreground mt-1 text-[0.8125rem]">
+                        Make sure your Pebble is powered on and nearby.
+                      </p>
+                    </div>
+                  )}
+
+                  {error ? (
+                    <p className="text-destructive mt-3 text-center text-[0.8125rem]">{error}</p>
+                  ) : null}
+
                   <p className="text-muted-foreground mt-4 text-center text-[0.8125rem] text-pretty">
-                    Your Pebble’s number is printed inside the box.
+                    Your Pebble’s number is shown by the hardware when available.
                   </p>
                   <Button
                     variant="ghost"
                     className="mt-3 h-11 w-full rounded-[var(--radius-xl)]"
-                    onClick={() => {
-                      setFound([]);
-                      setStage("scanning");
-                    }}
+                    onClick={() => void scan()}
                   >
                     Scan again
                   </Button>
