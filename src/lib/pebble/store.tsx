@@ -1,357 +1,48 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ActivityEvent, DeviceState, Dock, DockAction, NearbyPebble } from "./types";
+import { hardware } from "./hardware";
 
-/* ------------------------------------------------------------------ *
- * Mock hardware layer.
- *
- * The physical Pebble drives everything: it is discovered over Bluetooth,
- * paired once, and from then on it reports the dock it is resting on.
- * Everything below the `PebbleProvider` boundary is replaceable with a real
- * Bluetooth adapter that emits the same DeviceState.
- * ------------------------------------------------------------------ */
-
-const STORAGE_KEY = "pebble.state.v1";
-
-/** Pebbles the app "sees" while scanning. Their IDs are printed on the box. */
-const NEARBY_PEBBLES: NearbyPebble[] = [
-  { id: 3020, rssi: "Nearby" },
-  { id: 1847, rssi: "Nearby" },
-];
-
-/** The first dock a brand-new user places their Pebble on. */
-const FIRST_DOCK_ID = 3015;
-
-const UNPAIRED_DEVICE: DeviceState = {
-  id: null,
-  connected: false,
-  battery: 96,
-  charging: false,
-  dock: null,
-  name: "Pebble",
-  firmware: "1.4.2",
-  identifier: "—",
-  signal: "strong",
-};
-
+const STORAGE_KEY = "pebble.state.v2";
+const UNPAIRED_DEVICE: DeviceState = { id: null, connected: false, battery: 0, charging: false, dock: null, name: "Pebble", firmware: "—", identifier: "", signal: "weak" };
 export type DockActivationPhase = "idle" | "detected" | "activating" | "active";
-
-type PersistedState = {
-  pebbleId: number | null;
-  onboarded: boolean;
-  /** Last dock the Pebble reported; the hardware re-reports it on connect. */
-  dockId: number | null;
-  docks: Dock[];
-};
-
+type PersistedState = { pebbleId: number | null; pebbleIdentifier: string; onboarded: boolean; dockId: number | null; docks: Dock[] };
 type PebbleContextValue = {
-  /** False during SSR / first paint, before local state is restored. */
-  hydrated: boolean;
-  /** True once the user has paired a Pebble and finished first dock setup. */
-  onboarded: boolean;
-  device: DeviceState;
-  docks: Dock[];
-  activity: ActivityEvent[];
-  activeDock: Dock | null;
-  /** Dock reported by hardware that has no configuration yet. */
-  unconfiguredDockId: number | null;
-  phase: DockActivationPhase;
-  /** Index of actions already "run" during the activation sequence. */
-  ranActions: number;
-  /** Simulated Bluetooth scan for nearby Pebbles. */
-  discoverPebbles: () => NearbyPebble[];
-  pairPebble: (id: number) => void;
-  completeOnboarding: () => void;
-  forgetPebble: () => void;
-  getDock: (id: number) => Dock | undefined;
-  saveDock: (dock: { id: number; name: string; actions: DockAction[] }) => void;
-  updateDock: (id: number, patch: Partial<Omit<Dock, "id">>) => void;
-  removeDock: (id: number) => void;
-  setDeviceConnected: (connected: boolean) => void;
-  placeOnDock: (id: number | null) => void;
-  /**
-   * The Pebble reports the dock it has been placed on, read through its
-   * pogo-pin connection. May be a dock that is already configured.
-   */
-  detectDockPlacement: () => number;
+  hydrated: boolean; onboarded: boolean; device: DeviceState; docks: Dock[]; activity: ActivityEvent[]; activeDock: Dock | null; unconfiguredDockId: number | null; phase: DockActivationPhase; ranActions: number;
+  discoverPebbles: () => Promise<NearbyPebble[]>; pairPebble: (pebble: NearbyPebble) => Promise<void>; completeOnboarding: () => void; forgetPebble: () => void;
+  getDock: (id: number) => Dock | undefined; saveDock: (dock: { id: number; name: string; actions: DockAction[] }) => void; updateDock: (id: number, patch: Partial<Omit<Dock, "id">>) => void; removeDock: (id: number) => void;
+  setDeviceConnected: (connected: boolean) => Promise<void>; placeOnDock: (id: number | null) => void; detectDockPlacement: () => number | null;
 };
-
 const PebbleContext = createContext<PebbleContextValue | null>(null);
-
 let actionSeq = 100;
-export function newActionId() {
-  actionSeq += 1;
-  return `a${actionSeq}`;
-}
+export function newActionId() { actionSeq += 1; return `a${actionSeq}`; }
 
 export function PebbleProvider({ children }: { children: ReactNode }) {
-  const [hydrated, setHydrated] = useState(false);
-  const [onboarded, setOnboarded] = useState(false);
-  const [device, setDevice] = useState<DeviceState>(UNPAIRED_DEVICE);
-  const [docks, setDocks] = useState<Dock[]>([]);
-  const [activity, setActivity] = useState<ActivityEvent[]>([]);
-  const [phase, setPhase] = useState<DockActivationPhase>("idle");
-  const [ranActions, setRanActions] = useState(0);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [hydrated, setHydrated] = useState(false), [onboarded, setOnboarded] = useState(false), [device, setDevice] = useState<DeviceState>(UNPAIRED_DEVICE), [docks, setDocks] = useState<Dock[]>([]), [activity, setActivity] = useState<ActivityEvent[]>([]), [phase, setPhase] = useState<DockActivationPhase>("idle"), [ranActions, setRanActions] = useState(0);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]), polling = useRef<ReturnType<typeof setInterval> | null>(null), previousDock = useRef<number | null>(null);
+  const log = useCallback((event: Omit<ActivityEvent, "id" | "at">) => setActivity((prev) => [{ ...event, id: `e${Math.random().toString(36).slice(2, 9)}`, at: Date.now() }, ...prev]), []);
 
-  useEffect(() => {
-    const t = timers.current;
-    return () => t.forEach(clearTimeout);
-  }, []);
+  useEffect(() => { try { const raw = window.localStorage.getItem(STORAGE_KEY); if (raw) { const saved = JSON.parse(raw) as PersistedState; setDocks(saved.docks ?? []); setOnboarded(Boolean(saved.onboarded)); if (saved.pebbleIdentifier) setDevice((p) => ({ ...p, id: saved.pebbleId ?? null, name: saved.pebbleId != null ? `Pebble ${saved.pebbleId}` : "Pebble", identifier: saved.pebbleIdentifier })); } } catch (error) { console.warn("Could not restore Pebble state", error); } setHydrated(true); return () => { timers.current.forEach(clearTimeout); if (polling.current) clearInterval(polling.current); }; }, []);
+  useEffect(() => { if (!hydrated) return; try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ pebbleId: device.id, pebbleIdentifier: device.identifier, onboarded, dockId: device.dock, docks } satisfies PersistedState)); } catch (error) { console.warn("Could not persist Pebble state", error); } }, [hydrated, device.id, device.identifier, device.dock, onboarded, docks]);
 
-  /* restore ------------------------------------------------------- */
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as PersistedState;
-        if (saved.pebbleId != null) {
-          setDevice((prev) => ({
-            ...prev,
-            id: saved.pebbleId,
-            name: `Pebble ${saved.pebbleId}`,
-            identifier: `PBL-${saved.pebbleId}`,
-            connected: true,
-            charging: saved.dockId != null,
-            dock: saved.dockId ?? null,
-          }));
-        }
-        setDocks(saved.docks ?? []);
-        setOnboarded(Boolean(saved.onboarded));
-        if (saved.dockId != null && (saved.docks ?? []).some((d) => d.id === saved.dockId)) {
-          setPhase("active");
-          setRanActions(99);
-        }
-      }
-    } catch {
-      /* ignore corrupt local state */
-    }
-    setHydrated(true);
-  }, []);
+  const activeDock = useMemo(() => device.dock == null ? null : docks.find((d) => d.id === device.dock) ?? null, [device.dock, docks]);
+  const unconfiguredDockId = device.dock != null && !docks.some((d) => d.id === device.dock) ? device.dock : null;
+  const runSequence = useCallback((dock: Dock) => { timers.current.forEach(clearTimeout); timers.current = []; setPhase("detected"); setRanActions(0); timers.current.push(setTimeout(() => setPhase("activating"), 700)); dock.actions.forEach((action, i) => timers.current.push(setTimeout(() => void hardware.runAction(action.type, action.target).then(() => setRanActions(i + 1)).catch((e) => console.error("Pebble action failed", e)), 1100 + i * 650))); timers.current.push(setTimeout(() => { setPhase("active"); log({ kind: "activated", title: dock.name, detail: "Workspace activated" }); }, 1200 + dock.actions.length * 650)); }, [log]);
+  const applyDeviceState = useCallback((next: DeviceState) => { setDevice((p) => ({ ...p, ...next, name: next.name || p.name, identifier: next.identifier || p.identifier })); const oldDock = previousDock.current, nextDock = next.dock; previousDock.current = nextDock; if (oldDock === nextDock) return; if (nextDock == null) { timers.current.forEach(clearTimeout); setPhase("idle"); setRanActions(0); if (oldDock != null) log({ kind: "removed", title: "Pebble removed", detail: docks.find((d) => d.id === oldDock)?.name ?? "Dock removed" }); return; } const dock = docks.find((d) => d.id === nextDock); if (dock?.enabled) runSequence(dock); else setPhase("detected"); }, [docks, log, runSequence]);
+  const refreshStatus = useCallback(async () => { if (!device.identifier) return; try { applyDeviceState(await hardware.getStatus()); } catch (error) { console.warn("Could not refresh Pebble status", error); setDevice((p) => ({ ...p, connected: false, dock: null, charging: false })); } }, [applyDeviceState, device.identifier]);
 
-  /* persist ------------------------------------------------------- */
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      const payload: PersistedState = {
-        pebbleId: device.id,
-        onboarded,
-        dockId: device.dock,
-        docks,
-      };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch {
-      /* storage unavailable */
-    }
-  }, [hydrated, device.id, device.dock, onboarded, docks]);
+  useEffect(() => { if (!hydrated || !device.identifier) return; void (async () => { try { const next = await hardware.reconnectPebble(device.identifier); previousDock.current = next.dock; setDevice(next); if (next.dock != null) { const dock = docks.find((d) => d.id === next.dock); if (dock?.enabled) runSequence(dock); else setPhase("detected"); } } catch (error) { console.warn("Could not reconnect to Pebble", error); } })(); polling.current = setInterval(() => void refreshStatus(), 1500); return () => { if (polling.current) clearInterval(polling.current); polling.current = null; }; }, [hydrated, device.identifier]);
 
-  const log = useCallback((event: Omit<ActivityEvent, "id" | "at">) => {
-    setActivity((prev) => [
-      { ...event, id: `e${Math.random().toString(36).slice(2, 9)}`, at: Date.now() },
-      ...prev,
-    ]);
-  }, []);
-
-  const activeDock = useMemo(
-    () => (device.dock == null ? null : (docks.find((d) => d.id === device.dock) ?? null)),
-    [device.dock, docks],
-  );
-
-  const unconfiguredDockId =
-    device.dock != null && !docks.some((d) => d.id === device.dock) ? device.dock : null;
-
-  const runSequence = useCallback(
-    (dock: Dock) => {
-      timers.current.forEach(clearTimeout);
-      timers.current = [];
-      setPhase("detected");
-      setRanActions(0);
-      timers.current.push(setTimeout(() => setPhase("activating"), 700));
-      dock.actions.forEach((_, i) => {
-        timers.current.push(setTimeout(() => setRanActions(i + 1), 1100 + i * 420));
-      });
-      timers.current.push(
-        setTimeout(
-          () => {
-            setPhase("active");
-            log({ kind: "activated", title: dock.name, detail: "Workspace activated" });
-          },
-          1200 + dock.actions.length * 420,
-        ),
-      );
-    },
-    [log],
-  );
-
-  const placeOnDock = useCallback(
-    (id: number | null) => {
-      setDevice((prev) => ({
-        ...prev,
-        dock: id,
-        charging: id != null,
-        connected: id != null ? true : prev.connected,
-      }));
-      if (id == null) {
-        timers.current.forEach(clearTimeout);
-        setPhase("idle");
-        setRanActions(0);
-        const previous = docks.find((d) => d.id === device.dock);
-        log({
-          kind: "removed",
-          title: "Pebble removed",
-          detail: previous ? `${previous.name} disconnected` : "No dock",
-        });
-        return;
-      }
-      const dock = docks.find((d) => d.id === id);
-      if (dock && dock.enabled) runSequence(dock);
-      else setPhase("detected");
-    },
-    [device.dock, docks, log, runSequence],
-  );
-
-  const saveDock: PebbleContextValue["saveDock"] = useCallback(
-    ({ id, name, actions }) => {
-      setDocks((prev) => {
-        const exists = prev.some((d) => d.id === id);
-        if (exists) return prev.map((d) => (d.id === id ? { ...d, name, actions } : d));
-        return [...prev, { id, name, actions, enabled: true, createdAt: Date.now() }];
-      });
-      log({ kind: "configured", title: name, detail: "Dock configured" });
-      // If the Pebble is resting on this dock, it is live immediately.
-      setDevice((prev) => {
-        if (prev.dock === id) {
-          setPhase("active");
-          setRanActions(99);
-        }
-        return prev;
-      });
-    },
-    [log],
-  );
-
-  const updateDock: PebbleContextValue["updateDock"] = useCallback((id, patch) => {
-    setDocks((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
-  }, []);
-
-  const removeDock = useCallback((id: number) => {
-    setDocks((prev) => prev.filter((d) => d.id !== id));
-  }, []);
-
-  const setDeviceConnected = useCallback(
-    (connected: boolean) => {
-      setDevice((prev) => ({ ...prev, connected, dock: connected ? prev.dock : null }));
-      log(
-        connected
-          ? { kind: "connected", title: "Pebble connected", detail: "Bluetooth link established" }
-          : { kind: "disconnected", title: "Pebble disconnected", detail: "Out of range" },
-      );
-    },
-    [log],
-  );
-
-  const discoverPebbles = useCallback(() => NEARBY_PEBBLES, []);
-
-  const pairPebble = useCallback(
-    (id: number) => {
-      setDevice((prev) => ({
-        ...prev,
-        id,
-        name: `Pebble ${id}`,
-        identifier: `PBL-${id}`,
-        connected: true,
-        dock: null,
-      }));
-      setPhase("idle");
-      log({ kind: "connected", title: `Pebble ${id}`, detail: "Paired over Bluetooth" });
-    },
-    [log],
-  );
-
+  const discoverPebbles = useCallback(() => hardware.scanPebbles(), []);
+  const pairPebble = useCallback(async (pebble: NearbyPebble) => { const next = await hardware.connectPebble(pebble); previousDock.current = next.dock; setDevice(next); setPhase(next.dock == null ? "idle" : "detected"); setRanActions(0); log({ kind: "connected", title: next.name, detail: "Bluetooth link established" }); }, [log]);
   const completeOnboarding = useCallback(() => setOnboarded(true), []);
-
-  const forgetPebble = useCallback(() => {
-    timers.current.forEach(clearTimeout);
-    setDevice(UNPAIRED_DEVICE);
-    setDocks([]);
-    setActivity([]);
-    setPhase("idle");
-    setRanActions(0);
-    setOnboarded(false);
-  }, []);
-
-  const detectDockPlacement = useCallback(() => {
-    // Already resting on a dock we know about: the hardware reports the same ID.
-    if (device.dock != null && docks.some((d) => d.id === device.dock)) {
-      setPhase("detected");
-      return device.dock;
-    }
-    let id = docks.length === 0 ? FIRST_DOCK_ID : 1000 + Math.floor(Math.random() * 8999);
-    while (docks.some((d) => d.id === id)) id = 1000 + Math.floor(Math.random() * 8999);
-    setDevice((prev) => ({ ...prev, dock: id, connected: true, charging: true }));
-    setPhase("detected");
-    return id;
-  }, [device.dock, docks]);
-
-  const value = useMemo<PebbleContextValue>(
-    () => ({
-      hydrated,
-      onboarded,
-      device,
-      docks,
-      activity,
-      activeDock,
-      unconfiguredDockId,
-      phase,
-      ranActions,
-      discoverPebbles,
-      pairPebble,
-      completeOnboarding,
-      forgetPebble,
-      getDock: (id: number) => docks.find((d) => d.id === id),
-      saveDock,
-      updateDock,
-      removeDock,
-      setDeviceConnected,
-      placeOnDock,
-      detectDockPlacement,
-    }),
-    [
-      hydrated,
-      onboarded,
-      device,
-      docks,
-      activity,
-      activeDock,
-      unconfiguredDockId,
-      phase,
-      ranActions,
-      discoverPebbles,
-      pairPebble,
-      completeOnboarding,
-      forgetPebble,
-      saveDock,
-      updateDock,
-      removeDock,
-      setDeviceConnected,
-      placeOnDock,
-      detectDockPlacement,
-    ],
-  );
-
+  const forgetPebble = useCallback(() => { void hardware.disconnectPebble(); timers.current.forEach(clearTimeout); setDevice(UNPAIRED_DEVICE); setDocks([]); setActivity([]); setPhase("idle"); setRanActions(0); setOnboarded(false); previousDock.current = null; window.localStorage.removeItem(STORAGE_KEY); }, []);
+  const saveDock = useCallback(({ id, name, actions }: { id: number; name: string; actions: DockAction[] }) => { setDocks((prev) => prev.some((d) => d.id === id) ? prev.map((d) => d.id === id ? { ...d, name, actions } : d) : [...prev, { id, name, actions, enabled: true, createdAt: Date.now() }]); log({ kind: "configured", title: name, detail: "Dock configured" }); if (device.dock === id) { setPhase("active"); setRanActions(99); } }, [device.dock, log]);
+  const updateDock = useCallback((id: number, patch: Partial<Omit<Dock, "id">>) => setDocks((prev) => prev.map((d) => d.id === id ? { ...d, ...patch } : d)), []);
+  const removeDock = useCallback((id: number) => setDocks((prev) => prev.filter((d) => d.id !== id)), []);
+  const setDeviceConnected = useCallback(async (connected: boolean) => { if (!connected) { await hardware.disconnectPebble(); setDevice((p) => ({ ...p, connected: false, dock: null, charging: false })); log({ kind: "disconnected", title: "Pebble disconnected", detail: "Bluetooth link closed" }); return; } if (!device.identifier) return; try { const next = await hardware.reconnectPebble(device.identifier); previousDock.current = next.dock; setDevice(next); log({ kind: "connected", title: next.name, detail: "Bluetooth link established" }); } catch (error) { console.error(error); } }, [device.identifier, log]);
+  const placeOnDock = useCallback((id: number | null) => { previousDock.current = id; setDevice((p) => ({ ...p, dock: id, charging: id != null })); }, []);
+  const detectDockPlacement = useCallback(() => device.dock, [device.dock]);
+  const value = useMemo<PebbleContextValue>(() => ({ hydrated, onboarded, device, docks, activity, activeDock, unconfiguredDockId, phase, ranActions, discoverPebbles, pairPebble, completeOnboarding, forgetPebble, getDock: (id) => docks.find((d) => d.id === id), saveDock, updateDock, removeDock, setDeviceConnected, placeOnDock, detectDockPlacement }), [hydrated, onboarded, device, docks, activity, activeDock, unconfiguredDockId, phase, ranActions, discoverPebbles, pairPebble, completeOnboarding, forgetPebble, saveDock, updateDock, removeDock, setDeviceConnected, placeOnDock, detectDockPlacement]);
   return <PebbleContext.Provider value={value}>{children}</PebbleContext.Provider>;
 }
-
-export function usePebble() {
-  const ctx = useContext(PebbleContext);
-  if (!ctx) throw new Error("usePebble must be used inside PebbleProvider");
-  return ctx;
-}
+export function usePebble() { const ctx = useContext(PebbleContext); if (!ctx) throw new Error("usePebble must be used inside PebbleProvider"); return ctx; }
