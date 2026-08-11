@@ -1,7 +1,7 @@
 use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use serde::Serialize;
-use std::sync::Arc;
+use std::process::Command;
 use std::time::Duration;
 use tauri::State;
 use tokio::sync::Mutex;
@@ -232,12 +232,45 @@ async fn get_status(state: State<'_, AppState>) -> Result<NativeStatus, String> 
     read_status(&peripheral).await
 }
 
+#[tauri::command]
+fn execute_action(action_type: String, target: String) -> Result<(), String> {
+    if action_type != "open_app" {
+        return Err(format!("Action type '{action_type}' is not implemented yet"));
+    }
+
+    let command = match target.as_str() {
+        "Visual Studio Code" => "code",
+        "Spotify" => "spotify",
+        "Google Chrome" => "chrome",
+        "Discord" => "discord",
+        "Slack" => "slack",
+        "Notion" => "notion",
+        "Terminal" => "wt",
+        "Microsoft Teams" => "msteams",
+        "Figma" => "figma",
+        "Obsidian" => "obsidian",
+        "Zoom" => "zoom",
+        "Apple Music" => "apple-music",
+        _ => return Err(format!("No desktop launcher is configured for '{target}'")),
+    };
+
+    Command::new(command)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not open {target}: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![scan_pebbles, connect_pebble, get_status])
+        .invoke_handler(tauri::generate_handler![
+            scan_pebbles,
+            connect_pebble,
+            get_status,
+            execute_action
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Pebble Companion");
 }
