@@ -55,7 +55,7 @@ type PebbleContextValue = {
   removeDock: (id: number) => void;
   setDeviceConnected: (connected: boolean) => void;
   placeOnDock: (id: number | null) => void;
-  detectDockPlacement: () => Promise<number | null>;
+  detectDockPlacement: () => number | null;
 };
 
 const PebbleContext = createContext<PebbleContextValue | null>(null);
@@ -151,9 +151,7 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
           setTimeout(() => {
             void hardware.runAction(action.type, action.target)
               .then(() => setRanActions(i + 1))
-              .catch((error) => {
-                console.error("Pebble action failed", error);
-              });
+              .catch((error) => console.error("Pebble action failed", error));
           }, 1100 + i * 650),
         );
       });
@@ -241,11 +239,7 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
       setDevice(next);
       setPhase(next.dock == null ? "idle" : "detected");
       setRanActions(0);
-      log({
-        kind: "connected",
-        title: next.name,
-        detail: "Bluetooth link established",
-      });
+      log({ kind: "connected", title: next.name, detail: "Bluetooth link established" });
     },
     [log],
   );
@@ -301,7 +295,6 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
   );
 
   const placeOnDock = useCallback((id: number | null) => {
-    // Kept for the UI API; real dock state is driven by the hardware status.
     if (id == null) {
       previousDock.current = null;
       setDevice((prev) => ({ ...prev, dock: null, charging: false }));
@@ -310,17 +303,7 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
     setDevice((prev) => ({ ...prev, dock: id, charging: true }));
   }, []);
 
-  const detectDockPlacement = useCallback(async () => {
-    if (!device.identifier) return null;
-
-    try {
-      const next = await hardware.getStatus();
-      applyDeviceState(next);
-      return next.dock;
-    } catch {
-      return null;
-    }
-  }, [applyDeviceState, device.identifier]);
+  const detectDockPlacement = useCallback(() => device.dock, [device.dock]);
 
   const value = useMemo<PebbleContextValue>(
     () => ({
