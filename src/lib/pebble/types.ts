@@ -1,13 +1,5 @@
-/**
- * Domain model for Pebble.
- *
- * The UI only ever talks to these types, never to a transport. When real
- * Bluetooth arrives, swap the mock provider in `store.tsx` for a real one that
- * emits the same `DeviceState` shape — no screen needs to change.
- */
-
 export type DeviceState = {
-  /** Physical Pebble ID, printed on the packaging. Null until paired. */
+  /** Physical Pebble ID, when the firmware advertises one (e.g. Pebble 3020). */
   id: number | null;
   connected: boolean;
   battery: number;
@@ -16,13 +8,19 @@ export type DeviceState = {
   dock: number | null;
   name: string;
   firmware: string;
+  /** Stable native BLE identifier used by the Tauri bridge. */
   identifier: string;
   signal: "strong" | "fair" | "weak";
 };
 
-/** A Pebble seen during a Bluetooth scan. */
+/** A real Pebble returned by the native Bluetooth scan. */
 export type NearbyPebble = {
-  id: number;
+  /** Numeric product ID if the advertised name contains one; otherwise null. */
+  id: number | null;
+  /** Advertised Bluetooth name, e.g. "Pebble 3020" or "Pebble". */
+  name: string;
+  /** Native BLE identifier used when connecting. */
+  identifier: string;
   rssi: string;
 };
 
