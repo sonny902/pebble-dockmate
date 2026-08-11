@@ -1,94 +1,20 @@
-import {
-  AppWindow,
-  FolderOpen,
-  Globe,
-  Mic,
-  Moon,
-  Terminal,
-  Volume2,
-  LayoutGrid,
-  type LucideIcon,
-} from "lucide-react";
+import { AppWindow, FolderOpen, Globe, Mic, Moon, Terminal, Volume2, LayoutGrid, type LucideIcon } from "lucide-react";
 import type { ActionDefinition, ActionType, DockAction } from "./types";
 
 export const ACTION_DEFINITIONS: ActionDefinition[] = [
-  {
-    type: "open_app",
-    label: "Open App",
-    verb: "Open",
-    available: true,
-    description: "Launch an app on your Mac or PC.",
-  },
-  {
-    type: "open_website",
-    label: "Open Website",
-    verb: "Open",
-    available: false,
-    description: "Open a page in your default browser.",
-  },
-  {
-    type: "open_folder",
-    label: "Open Folder",
-    verb: "Open",
-    available: false,
-    description: "Reveal a folder in the file manager.",
-  },
-  {
-    type: "run_command",
-    label: "Run Command",
-    verb: "Run",
-    available: false,
-    description: "Execute a saved shell command.",
-  },
-  {
-    type: "change_volume",
-    label: "Change Volume",
-    verb: "Set volume to",
-    available: false,
-    description: "Set system volume to a level.",
-  },
-  {
-    type: "mute_microphone",
-    label: "Mute Microphone",
-    verb: "Mute",
-    available: false,
-    description: "Silence your input device.",
-  },
-  {
-    type: "focus_mode",
-    label: "Start Focus Mode",
-    verb: "Start",
-    available: false,
-    description: "Turn on Do Not Disturb.",
-  },
-  {
-    type: "open_workspace",
-    label: "Open Workspace",
-    verb: "Open",
-    available: false,
-    description: "Restore a saved set of windows.",
-  },
+  { type: "open_app", label: "Open App", verb: "Open", available: true, description: "Launch an app on your Mac or PC." },
+  { type: "open_website", label: "Open Website", verb: "Open", available: true, description: "Open a page in your default browser." },
+  { type: "open_folder", label: "Open Folder", verb: "Open", available: true, description: "Reveal a folder in the file manager." },
+  { type: "run_command", label: "Run Command", verb: "Run", available: true, description: "Execute a saved shell command." },
+  { type: "change_volume", label: "Change Volume", verb: "Set volume to", available: true, description: "Set system volume to a level." },
+  { type: "mute_microphone", label: "Mute Microphone", verb: "Toggle", available: true, description: "Toggle your microphone mute state." },
+  { type: "focus_mode", label: "Focus Settings", verb: "Open", available: true, description: "Open your desktop focus / Do Not Disturb settings." },
+  { type: "open_workspace", label: "Open Workspace", verb: "Open", available: false, description: "Restore a saved set of windows." },
 ];
 
-export const ACTION_ICONS: Record<ActionType, LucideIcon> = {
-  open_app: AppWindow,
-  open_website: Globe,
-  open_folder: FolderOpen,
-  run_command: Terminal,
-  change_volume: Volume2,
-  mute_microphone: Mic,
-  focus_mode: Moon,
-  open_workspace: LayoutGrid,
-};
+export const ACTION_ICONS: Record<ActionType, LucideIcon> = { open_app: AppWindow, open_website: Globe, open_folder: FolderOpen, run_command: Terminal, change_volume: Volume2, mute_microphone: Mic, focus_mode: Moon, open_workspace: LayoutGrid };
 
-export type AppEntry = {
-  name: string;
-  category: string;
-  /** Two brand-ish stops used for the app tile. */
-  tint: [string, string];
-  mark: string;
-};
-
+export type AppEntry = { name: string; category: string; tint: [string, string]; mark: string };
 export const APP_CATALOG: AppEntry[] = [
   { name: "Visual Studio Code", category: "Development", tint: ["#3aa0f0", "#1b6fd6"], mark: "VS" },
   { name: "Spotify", category: "Music", tint: ["#4bd67f", "#17a34a"], mark: "Sp" },
@@ -110,27 +36,6 @@ export const APP_CATALOG: AppEntry[] = [
   { name: "Photoshop", category: "Design", tint: ["#5ec2ff", "#0a4c8f"], mark: "Ps" },
 ];
 
-export function appEntry(name: string): AppEntry {
-  return (
-    APP_CATALOG.find((a) => a.name === name) ?? {
-      name,
-      category: "App",
-      tint: ["#a5adba", "#5b6470"],
-      mark: name.slice(0, 2),
-    }
-  );
-}
-
-export function actionLabel(action: DockAction): string {
-  const def = ACTION_DEFINITIONS.find((d) => d.type === action.type);
-  return `${def?.verb ?? "Run"} ${action.target}`;
-}
-
-export const DOCK_NAME_SUGGESTIONS = [
-  "Desk",
-  "Office",
-  "Bedroom",
-  "Living Room",
-  "Car",
-  "Meeting Room",
-];
+export function appEntry(name: string): AppEntry { return APP_CATALOG.find((a) => a.name === name) ?? { name, category: "App", tint: ["#a5adba", "#5b6470"], mark: name.slice(0, 2) }; }
+export function actionLabel(action: DockAction): string { const def = ACTION_DEFINITIONS.find((d) => d.type === action.type); return `${def?.verb ?? "Run"} ${action.target}`; }
+export const DOCK_NAME_SUGGESTIONS = ["Desk", "Office", "Bedroom", "Living Room", "Car", "Meeting Room"];
