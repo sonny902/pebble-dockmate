@@ -42,8 +42,7 @@ function toDevice(status: NativeStatus): DeviceState {
 export const hardware = {
   async scanPebbles(): Promise<NearbyPebble[]> {
     if (!isTauriRuntime()) return [];
-    const pebbles = await invokeNative<NativePebble[]>("scan_pebbles");
-    return pebbles;
+    return invokeNative<NativePebble[]>("scan_pebbles");
   },
 
   async connectPebble(pebble: NearbyPebble): Promise<DeviceState> {
@@ -64,5 +63,13 @@ export const hardware = {
 
     const status = await invokeNative<NativeStatus>("get_status");
     return toDevice(status);
+  },
+
+  async runAction(type: string, target: string): Promise<void> {
+    if (!isTauriRuntime()) return;
+    await invokeNative<void>("execute_action", {
+      actionType: type,
+      target,
+    });
   },
 };
