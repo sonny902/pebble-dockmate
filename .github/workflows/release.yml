@@ -33,6 +33,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Pebble ${{ github.ref_name }}"
-          releaseBody: "Pebble Companion desktop installer for Windows."
+          releaseBody: "Pebble desktop installer for Windows."
           releaseDraft: false
-          prerelease: false
+          prerelease: true
