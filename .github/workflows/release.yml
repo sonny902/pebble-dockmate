@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -31,8 +32,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Pebble ${{ github.ref_name }}"
-          releaseBody: "Pebble desktop installer for Windows."
+          tagName: v0.2.1
+          releaseName: "Pebble v0.2.1"
+          releaseBody: "Pebble Windows installer — prototype hardware test build."
           releaseDraft: false
           prerelease: true
