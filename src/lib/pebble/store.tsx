@@ -145,14 +145,27 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
       setPhase("detected");
       setRanActions(0);
       timers.current.push(setTimeout(() => setPhase("activating"), 700));
-      dock.actions.forEach((_, i) => {
-        timers.current.push(setTimeout(() => setRanActions(i + 1), 1100 + i * 420));
+
+      dock.actions.forEach((action, i) => {
+        timers.current.push(
+          setTimeout(() => {
+            void hardware.runAction(action.type, action.target)
+              .then(() => setRanActions(i + 1))
+              .catch((error) => {
+                console.error("Pebble action failed", error);
+              });
+          }, 1100 + i * 650),
+        );
       });
+
       timers.current.push(
-        setTimeout(() => {
-          setPhase("active");
-          log({ kind: "activated", title: dock.name, detail: "Workspace activated" });
-        }, 1200 + dock.actions.length * 420),
+        setTimeout(
+          () => {
+            setPhase("active");
+            log({ kind: "activated", title: dock.name, detail: "Workspace activated" });
+          },
+          1200 + dock.actions.length * 650,
+        ),
       );
     },
     [log],
@@ -288,7 +301,7 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
   );
 
   const placeOnDock = useCallback((id: number | null) => {
-    // Kept for the UI API, but real dock state is driven by the hardware status.
+    // Kept for the UI API; real dock state is driven by the hardware status.
     if (id == null) {
       previousDock.current = null;
       setDevice((prev) => ({ ...prev, dock: null, charging: false }));
