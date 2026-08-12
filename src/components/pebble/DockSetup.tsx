@@ -28,37 +28,41 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
   const [name, setName] = useState("");
   const [actions, setActions] = useState<DockAction[]>([]);
 
-  // Dock setup owns hardware reads while this screen is mounted. This is
-  // deliberate: the normal 3-second background status loop is paused by the
-  // store during setup, so once the name screen appears there are zero BLE
-  // operations competing with WebView input/click handling.
+  // While this screen is mounted it owns BLE status reads. The normal background
+  // poller is explicitly told to stand down, and reads are strictly sequential
+  // so a slow Windows BLE request can never pile up behind another one.
   useEffect(() => {
     if (!detecting) return;
+    const win = window as typeof window & { __PEBBLE_DOCK_SETUP__?: boolean };
+    win.__PEBBLE_DOCK_SETUP__ = true;
     let cancelled = false;
-    const poll = window.setInterval(() => {
-      void hardware.getStatus().then((status) => {
+    let readInFlight = false;
+    let timer: number | undefined;
+
+    const read = async () => {
+      if (cancelled || readInFlight) return;
+      readInFlight = true;
+      try {
+        const status = await hardware.getStatus();
         if (cancelled || status.dock === 0) return;
         placeOnDock(status.dock);
         setDockId(status.dock);
         setExisting(getDock(status.dock) ?? null);
         setDetecting(false);
-        window.clearInterval(poll);
-      }).catch(() => {
+      } catch {
         // Keep waiting; the Pebble may need another moment to report its dock.
-      });
-    }, 500);
+      } finally {
+        readInFlight = false;
+        if (!cancelled && detecting) timer = window.setTimeout(() => void read(), 500);
+      }
+    };
 
-    // Read immediately rather than waiting for the first 500ms tick.
-    void hardware.getStatus().then((status) => {
-      if (cancelled || status.dock === 0) return;
-      placeOnDock(status.dock);
-      setDockId(status.dock);
-      setExisting(getDock(status.dock) ?? null);
-      setDetecting(false);
-      window.clearInterval(poll);
-    }).catch(() => undefined);
-
-    return () => { cancelled = true; window.clearInterval(poll); };
+    void read();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      win.__PEBBLE_DOCK_SETUP__ = false;
+    };
   }, [detecting, getDock, placeOnDock]);
 
   useEffect(() => {
@@ -74,16 +78,13 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
     }
     setStep(step === "actions" ? "name" : "waiting");
   };
-
   const finish = () => { if (onFinish) onFinish(); else navigate({ to: "/docks" }); };
-
   const handleSave = () => {
     if (dockId == null) return;
     saveDock({ id: dockId, name: name.trim(), actions });
     toast.success(`${name.trim()} saved`, { description: `${actions.length} action${actions.length === 1 ? "" : "s"} configured` });
     setStep("done");
   };
-
   const progressIndex = Math.max(0, PROGRESS.indexOf(step === "duplicate" ? "waiting" : step));
 
   return (
@@ -93,7 +94,6 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
         <div className="flex justify-center gap-1.5">{PROGRESS.map((s, i) => <span key={s} className={cn("h-1 rounded-full transition-all duration-500", i <= progressIndex ? "bg-primary w-7" : "bg-muted w-4")} />)}</div>
         <span className="w-10" />
       </div>
-
       <div key={step} className="animate-rise mt-8">
         {step === "waiting" ? <StepWaiting detecting={detecting} first={first} /> : null}
         {step === "duplicate" && existing ? <StepDuplicate dock={existing} onExit={onExit} /> : null}
@@ -101,12 +101,10 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
         {step === "actions" ? <StepActions name={name} actions={actions} setActions={setActions} onSave={handleSave} /> : null}
         {step === "done" ? <StepDone name={name} actions={actions} onFinish={finish} /> : null}
       </div>
-
       {step === "waiting" && !device.connected ? <p className="text-muted-foreground mt-6 text-center text-[0.8125rem]">Pebble isn’t nearby — setup will continue when it reconnects.</p> : null}
     </div>
   );
 }
-
 function Title({ title, subtitle }: { title: string; subtitle?: string | undefined }) { return <div className="mb-7 text-center"><h1 className="text-balance-tight text-2xl font-semibold">{title}</h1>{subtitle ? <p className="text-muted-foreground mt-2 text-[0.9375rem] text-pretty">{subtitle}</p> : null}</div>; }
 function StepWaiting({ detecting, first }: { detecting: boolean; first: boolean }) { return <div><Title title={detecting ? (first ? "Now set up your first dock" : "Add a new dock") : "Dock detected"} subtitle={detecting ? (first ? "Place your Pebble on the dock you want to set up." : "Place your Pebble on the new dock.") : "This dock is new. Let’s make it yours."} /><div className="surface flex flex-col items-center px-6 py-12"><PebbleVisual size="lg" state={detecting ? "searching" : "docked"} /><div className="mt-8 h-6">{detecting ? <div className="text-muted-foreground flex items-center gap-2 text-sm"><span className="border-primary/30 border-t-primary h-3.5 w-3.5 animate-spin rounded-full border-2" />Waiting for a dock…</div> : <div className="text-success animate-check flex items-center gap-2 text-sm font-medium"><Check className="h-4 w-4" /> Dock detected</div>}</div></div></div>; }
 function StepDuplicate({ dock, onExit }: { dock: Dock; onExit?: (() => void) | undefined }) { return <div><Title title={`${dock.name} is already set up.`} subtitle="This dock is already connected to your Pebble." /><div className="surface flex flex-col items-center px-6 py-12"><PebbleVisual size="lg" state="docked" /><p className="text-muted-foreground mt-8 text-sm">{dock.actions.length === 0 ? "No actions yet" : `${dock.actions.length} action${dock.actions.length === 1 ? "" : "s"} configured`}</p></div><Button asChild size="lg" className="mt-6 h-12 w-full rounded-[var(--radius-xl)]"><Link to="/docks/$dockId" params={{ dockId: String(dock.id) }} onClick={onExit}>View {dock.name}</Link></Button></div>; }
