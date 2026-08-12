@@ -16,7 +16,6 @@ import { toast } from "sonner";
 type Step = "waiting" | "duplicate" | "name" | "actions" | "done";
 const PROGRESS: Step[] = ["waiting", "name", "actions", "done"];
 
-/** Hardware-led dock setup: the Pebble reports the dock it has been placed on. */
 export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | undefined; onExit?: (() => void) | undefined }) {
   const navigate = useNavigate();
   const { placeOnDock, saveDock, getDock, device, docks } = usePebble();
@@ -28,18 +27,12 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
   const [name, setName] = useState("");
   const [actions, setActions] = useState<DockAction[]>([]);
 
-  // Keep the background status loop paused for the entire setup component,
-  // including the naming/actions screens. Otherwise it can start a native BLE
-  // read again immediately after dock detection and starve WebView input.
   useEffect(() => {
     const win = window as typeof window & { __PEBBLE_DOCK_SETUP__?: boolean };
     win.__PEBBLE_DOCK_SETUP__ = true;
     return () => { win.__PEBBLE_DOCK_SETUP__ = false; };
   }, []);
 
-  // Dock detection owns hardware reads while this screen is waiting. Reads are
-  // strictly sequential so a slow Windows BLE request can never pile up behind
-  // another one.
   useEffect(() => {
     if (!detecting) return;
     let cancelled = false;
@@ -52,10 +45,15 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
       try {
         const status = await hardware.getStatus();
         if (cancelled || status.dock === 0) return;
-        placeOnDock(status.dock);
+        // Keep the React state truthful: this screen only claims the Pebble is
+        // connected when the native status call actually says it is connected.
+        placeOnDock(status.dock, status.connected);
         setDockId(status.dock);
         setExisting(getDock(status.dock) ?? null);
         setDetecting(false);
+        // Do not wait for another effect/timer. This was the exact transition
+        // that could leave the UI permanently sitting on "Dock detected".
+        setStep(getDock(status.dock) ? "duplicate" : "name");
       } catch {
         // Keep waiting; the Pebble may need another moment to report its dock.
       } finally {
@@ -67,12 +65,6 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
     void read();
     return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
   }, [detecting, getDock, placeOnDock]);
-
-  useEffect(() => {
-    if (detecting || step !== "waiting" || dockId == null) return;
-    const t = window.setTimeout(() => setStep(existing ? "duplicate" : "name"), 1000);
-    return () => window.clearTimeout(t);
-  }, [detecting, step, dockId, existing]);
 
   const goBack = () => {
     if (step === "waiting" || step === "duplicate" || step === "done") { if (onExit) onExit(); else navigate({ to: "/docks" }); return; }
