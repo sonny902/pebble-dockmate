@@ -10,7 +10,7 @@ type PebbleContextValue = {
   hydrated: boolean; onboarded: boolean; device: DeviceState; docks: Dock[]; activity: ActivityEvent[]; activeDock: Dock | null; unconfiguredDockId: number | null; phase: DockActivationPhase; ranActions: number;
   discoverPebbles: () => Promise<NearbyPebble[]>; pairPebble: (pebble: NearbyPebble) => Promise<void>; completeOnboarding: () => void; forgetPebble: () => void;
   getDock: (id: number) => Dock | undefined; saveDock: (dock: { id: number; name: string; actions: DockAction[] }) => void; updateDock: (id: number, patch: Partial<Omit<Dock, "id">>) => void; removeDock: (id: number) => void;
-  setDeviceConnected: (connected: boolean) => Promise<void>; placeOnDock: (id: number | null) => void; detectDockPlacement: () => number | null;
+  setDeviceConnected: (connected: boolean) => Promise<void>; placeOnDock: (id: number | null, connected?: boolean) => void; detectDockPlacement: () => number | null;
 };
 const PebbleContext = createContext<PebbleContextValue | null>(null);
 let actionSeq = 100;
@@ -28,13 +28,7 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
   const unconfiguredDockId = device.dock != null && !docks.some((d) => d.id === device.dock) ? device.dock : null;
   const runSequence = useCallback((dock: Dock) => { timers.current.forEach(clearTimeout); timers.current = []; setPhase("detected"); setRanActions(0); timers.current.push(setTimeout(() => setPhase("activating"), 700)); dock.actions.forEach((action, i) => timers.current.push(setTimeout(() => void hardware.runAction(action.type, action.target).then(() => setRanActions(i + 1)).catch((e) => console.error("Pebble action failed", e)), 1100 + i * 650))); timers.current.push(setTimeout(() => { setPhase("active"); log({ kind: "activated", title: dock.name, detail: "Workspace activated" }); }, 1200 + dock.actions.length * 650)); }, [log]);
   const applyDeviceState = useCallback((next: DeviceState) => { setDevice((p) => ({ ...p, ...next, name: next.name || p.name, identifier: next.identifier || p.identifier })); const oldDock = previousDock.current, nextDock = next.dock; previousDock.current = nextDock; if (oldDock === nextDock) return; if (nextDock == null) { timers.current.forEach(clearTimeout); setPhase("idle"); setRanActions(0); if (oldDock != null) log({ kind: "removed", title: "Pebble removed", detail: docks.find((d) => d.id === oldDock)?.name ?? "Dock removed" }); return; } const dock = docks.find((d) => d.id === nextDock); if (dock?.enabled) runSequence(dock); else setPhase("detected"); }, [docks, log, runSequence]);
-  const refreshStatus = useCallback(async () => {
-    // DockSetup performs its own one-shot hardware reads while mounted. Never
-    // let the background loop compete with that screen or with text input.
-    if (typeof window !== "undefined" && (window as typeof window & { __PEBBLE_DOCK_SETUP__?: boolean }).__PEBBLE_DOCK_SETUP__) return;
-    if (!device.identifier || pollInFlight.current) return; pollInFlight.current = true;
-    try { applyDeviceState(await hardware.getStatus()); } catch (error) { console.warn("Could not refresh Pebble status", error); setDevice((p) => ({ ...p, connected: false, charging: false })); } finally { pollInFlight.current = false; }
-  }, [applyDeviceState, device.identifier]);
+  const refreshStatus = useCallback(async () => { if (typeof window !== "undefined" && (window as typeof window & { __PEBBLE_DOCK_SETUP__?: boolean }).__PEBBLE_DOCK_SETUP__) return; if (!device.identifier || pollInFlight.current) return; pollInFlight.current = true; try { applyDeviceState(await hardware.getStatus()); } catch (error) { console.warn("Could not refresh Pebble status", error); setDevice((p) => ({ ...p, connected: false, charging: false })); } finally { pollInFlight.current = false; } }, [applyDeviceState, device.identifier]);
 
   useEffect(() => {
     if (!hydrated || !device.identifier || !onboarded) { if (polling.current) clearInterval(polling.current); polling.current = null; return; }
@@ -54,7 +48,7 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
   const updateDock = useCallback((id: number, patch: Partial<Omit<Dock, "id">>) => setDocks((prev) => prev.map((d) => d.id === id ? { ...d, ...patch } : d)), []);
   const removeDock = useCallback((id: number) => setDocks((prev) => prev.filter((d) => d.id !== id)), []);
   const setDeviceConnected = useCallback(async (connected: boolean) => { if (!connected) { await hardware.disconnectPebble(); setDevice((p) => ({ ...p, connected: false, dock: null, charging: false })); log({ kind: "disconnected", title: "Pebble disconnected", detail: "Bluetooth link closed" }); return; } if (!device.identifier) return; try { const next = await hardware.reconnectPebble(device.identifier); previousDock.current = next.dock; setDevice(next); log({ kind: "connected", title: next.name, detail: "Bluetooth link established" }); } catch (error) { console.error(error); } }, [device.identifier, log]);
-  const placeOnDock = useCallback((id: number | null) => { previousDock.current = id; setDevice((p) => ({ ...p, dock: id, charging: id != null })); }, []);
+  const placeOnDock = useCallback((id: number | null, connected?: boolean) => { previousDock.current = id; setDevice((p) => ({ ...p, dock: id, charging: id != null, ...(connected === undefined ? {} : { connected }) })); }, []);
   const detectDockPlacement = useCallback(() => device.dock, [device.dock]);
   const value = useMemo<PebbleContextValue>(() => ({ hydrated, onboarded, device, docks, activity, activeDock, unconfiguredDockId, phase, ranActions, discoverPebbles, pairPebble, completeOnboarding, forgetPebble, getDock: (id) => docks.find((d) => d.id === id), saveDock, updateDock, removeDock, setDeviceConnected, placeOnDock, detectDockPlacement }), [hydrated, onboarded, device, docks, activity, activeDock, unconfiguredDockId, phase, ranActions, discoverPebbles, pairPebble, completeOnboarding, forgetPebble, saveDock, updateDock, removeDock, setDeviceConnected, placeOnDock, detectDockPlacement]);
   return <PebbleContext.Provider value={value}>{children}</PebbleContext.Provider>;
