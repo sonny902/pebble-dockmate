@@ -32,8 +32,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v0.2.1
-          releaseName: "Pebble v0.2.1"
-          releaseBody: "Pebble Windows installer — prototype hardware test build."
+          tagName: v0.2.2
+          releaseName: "Pebble v0.2.2"
+          releaseBody: "Pebble Windows installer — static Tauri frontend fix."
           releaseDraft: false
           prerelease: true
