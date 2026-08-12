@@ -1,4 +1,4 @@
-use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
+use btleplug::api::{Central, Characteristic, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use serde::Serialize;
 use std::process::Command;
@@ -13,7 +13,9 @@ const STATUS_UUID: &str = "87654321-4321-4321-4321-cba987654321";
 pub struct AppState {
     adapter: Mutex<Option<Adapter>>,
     peripheral: Mutex<Option<Peripheral>>,
+    status_characteristic: Mutex<Option<Characteristic>>,
     identifier: Mutex<Option<String>>,
+    discovered: Mutex<Vec<Peripheral>>,
     ble_operation: Mutex<()>,
 }
 
@@ -39,26 +41,32 @@ async fn get_adapter(state: &AppState) -> Result<Adapter, String> {
 
 async fn scan_adapter(adapter: &Adapter) -> Result<Vec<Peripheral>, String> {
     adapter.start_scan(ScanFilter::default()).await.map_err(|e| format!("Could not start Bluetooth scan: {e}"))?;
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_millis(900)).await;
     let result = adapter.peripherals().await.map_err(|e| format!("Could not read Bluetooth devices: {e}"));
     let _ = adapter.stop_scan().await;
     result
 }
 
-async fn read_status(peripheral: &Peripheral) -> Result<NativeStatus, String> {
+async fn read_status(peripheral: &Peripheral, cached: Option<Characteristic>) -> Result<(NativeStatus, Characteristic), String> {
     if !peripheral.is_connected().await.map_err(|e| format!("Could not read Pebble connection state: {e}"))? {
         peripheral.connect().await.map_err(|e| format!("Could not reconnect to Pebble: {e}"))?;
     }
-    peripheral.discover_services().await.map_err(|e| format!("Could not discover Pebble services: {e}"))?;
-    let status_uuid = Uuid::parse_str(STATUS_UUID).map_err(|e| e.to_string())?;
-    let characteristic = peripheral.characteristics().into_iter().find(|c| c.uuid == status_uuid).ok_or_else(|| "Pebble status characteristic was not found".to_string())?;
+
+    let characteristic = if let Some(c) = cached {
+        c
+    } else {
+        peripheral.discover_services().await.map_err(|e| format!("Could not discover Pebble services: {e}"))?;
+        let status_uuid = Uuid::parse_str(STATUS_UUID).map_err(|e| e.to_string())?;
+        peripheral.characteristics().into_iter().find(|c| c.uuid == status_uuid).ok_or_else(|| "Pebble status characteristic was not found".to_string())?
+    };
+
     let data = peripheral.read(&characteristic).await.map_err(|e| format!("Could not read Pebble status: {e}"))?;
     let text = String::from_utf8(data).map_err(|e| format!("Invalid Pebble status: {e}"))?;
     let raw: PebbleStatus = serde_json::from_str(&text).map_err(|e| format!("Invalid Pebble JSON: {e}"))?;
     let properties = peripheral.properties().await.map_err(|e| format!("Could not read Pebble properties: {e}"))?;
     let name = properties.as_ref().and_then(|p| p.local_name.clone()).unwrap_or_else(|| "Pebble".to_string());
     let identifier = format!("{:?}", peripheral.id());
-    Ok(NativeStatus { battery: raw.battery, charging: raw.charging, dock: raw.dock, id: pebble_id(&name), name, identifier })
+    Ok((NativeStatus { battery: raw.battery, charging: raw.charging, dock: raw.dock, id: pebble_id(&name), name, identifier }, characteristic))
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -70,25 +78,32 @@ async fn scan_pebbles(state: State<'_, AppState>) -> Result<Vec<NearbyPebble>, S
     let adapter = get_adapter(&state).await?;
     let peripherals = scan_adapter(&adapter).await?;
     let mut found = Vec::new();
+    let mut discovered = Vec::new();
     for peripheral in peripherals {
         let properties = match peripheral.properties().await { Ok(Some(p)) => p, _ => continue };
         let Some(name) = properties.local_name else { continue };
         if !name.to_ascii_lowercase().starts_with("pebble") { continue; }
+        discovered.push(peripheral.clone());
         found.push(NearbyPebble { id: pebble_id(&name), name, identifier: format!("{:?}", peripheral.id()), rssi: properties.rssi.map(|v| format!("{v} dBm")).unwrap_or_else(|| "Nearby".to_string()) });
     }
+    *state.discovered.lock().await = discovered;
     Ok(found)
 }
 
 async fn connect_identifier(state: &AppState, identifier: String) -> Result<NativeStatus, String> {
     let _ble = state.ble_operation.lock().await;
     let adapter = get_adapter(state).await?;
-    let peripherals = scan_adapter(&adapter).await?;
-    let peripheral = peripherals.into_iter().find(|p| format!("{:?}", p.id()) == identifier).ok_or_else(|| "That Pebble is no longer nearby".to_string())?;
+    let peripheral = if let Some(found) = state.discovered.lock().await.iter().find(|p| format!("{:?}", p.id()) == identifier).cloned() {
+        found
+    } else {
+        scan_adapter(&adapter).await?.into_iter().find(|p| format!("{:?}", p.id()) == identifier).ok_or_else(|| "That Pebble is no longer nearby".to_string())?
+    };
     if !peripheral.is_connected().await.map_err(|e| format!("Could not read Pebble connection state: {e}"))? {
         peripheral.connect().await.map_err(|e| format!("Could not connect to Pebble: {e}"))?;
     }
-    let status = read_status(&peripheral).await?;
+    let (status, characteristic) = read_status(&peripheral, None).await?;
     *state.peripheral.lock().await = Some(peripheral);
+    *state.status_characteristic.lock().await = Some(characteristic);
     *state.identifier.lock().await = Some(identifier);
     Ok(status)
 }
@@ -103,11 +118,11 @@ async fn reconnect_pebble(state: State<'_, AppState>, identifier: String) -> Res
 async fn disconnect_pebble(state: State<'_, AppState>) -> Result<(), String> {
     let _ble = state.ble_operation.lock().await;
     if let Some(peripheral) = state.peripheral.lock().await.take() {
-        if peripheral.is_connected().await.unwrap_or(false) {
-            peripheral.disconnect().await.map_err(|e| format!("Could not disconnect from Pebble: {e}"))?;
-        }
+        if peripheral.is_connected().await.unwrap_or(false) { let _ = peripheral.disconnect().await; }
     }
+    *state.status_characteristic.lock().await = None;
     *state.identifier.lock().await = None;
+    *state.discovered.lock().await = Vec::new();
     Ok(())
 }
 
@@ -115,7 +130,10 @@ async fn disconnect_pebble(state: State<'_, AppState>) -> Result<(), String> {
 async fn get_status(state: State<'_, AppState>) -> Result<NativeStatus, String> {
     let _ble = state.ble_operation.lock().await;
     let peripheral = state.peripheral.lock().await.clone().ok_or_else(|| "Pebble is not connected".to_string())?;
-    read_status(&peripheral).await
+    let cached = state.status_characteristic.lock().await.clone();
+    let (status, characteristic) = read_status(&peripheral, cached).await?;
+    *state.status_characteristic.lock().await = Some(characteristic);
+    Ok(status)
 }
 
 fn spawn(program: &str, args: &[&str], label: &str) -> Result<(), String> { Command::new(program).args(args).spawn().map(|_| ()).map_err(|e| format!("Could not {label}: {e}")) }
