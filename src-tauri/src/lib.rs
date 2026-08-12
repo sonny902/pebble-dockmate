@@ -14,32 +14,17 @@ pub struct AppState {
     adapter: Mutex<Option<Adapter>>,
     peripheral: Mutex<Option<Peripheral>>,
     identifier: Mutex<Option<String>>,
+    ble_operation: Mutex<()>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct NearbyPebble {
-    pub id: Option<u32>,
-    pub name: String,
-    pub identifier: String,
-    pub rssi: String,
-}
+pub struct NearbyPebble { pub id: Option<u32>, pub name: String, pub identifier: String, pub rssi: String }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct NativeStatus {
-    pub battery: u8,
-    pub charging: bool,
-    pub dock: u32,
-    pub id: Option<u32>,
-    pub name: String,
-    pub identifier: String,
-}
+pub struct NativeStatus { pub battery: u8, pub charging: bool, pub dock: u32, pub id: Option<u32>, pub name: String, pub identifier: String }
 
 fn pebble_id(name: &str) -> Option<u32> {
-    let digits: String = name
-        .chars()
-        .skip_while(|c| !c.is_ascii_digit())
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
+    let digits: String = name.chars().skip_while(|c| !c.is_ascii_digit()).take_while(|c| c.is_ascii_digit()).collect();
     if digits.is_empty() { None } else { digits.parse().ok() }
 }
 
@@ -55,7 +40,9 @@ async fn get_adapter(state: &AppState) -> Result<Adapter, String> {
 async fn scan_adapter(adapter: &Adapter) -> Result<Vec<Peripheral>, String> {
     adapter.start_scan(ScanFilter::default()).await.map_err(|e| format!("Could not start Bluetooth scan: {e}"))?;
     tokio::time::sleep(Duration::from_secs(2)).await;
-    adapter.peripherals().await.map_err(|e| format!("Could not read Bluetooth devices: {e}"))
+    let result = adapter.peripherals().await.map_err(|e| format!("Could not read Bluetooth devices: {e}"));
+    let _ = adapter.stop_scan().await;
+    result
 }
 
 async fn read_status(peripheral: &Peripheral) -> Result<NativeStatus, String> {
@@ -79,6 +66,7 @@ struct PebbleStatus { battery: u8, charging: bool, dock: u32 }
 
 #[tauri::command]
 async fn scan_pebbles(state: State<'_, AppState>) -> Result<Vec<NearbyPebble>, String> {
+    let _ble = state.ble_operation.lock().await;
     let adapter = get_adapter(&state).await?;
     let peripherals = scan_adapter(&adapter).await?;
     let mut found = Vec::new();
@@ -86,18 +74,13 @@ async fn scan_pebbles(state: State<'_, AppState>) -> Result<Vec<NearbyPebble>, S
         let properties = match peripheral.properties().await { Ok(Some(p)) => p, _ => continue };
         let Some(name) = properties.local_name else { continue };
         if !name.to_ascii_lowercase().starts_with("pebble") { continue; }
-        found.push(NearbyPebble {
-            id: pebble_id(&name),
-            name,
-            identifier: format!("{:?}", peripheral.id()),
-            rssi: properties.rssi.map(|v| format!("{v} dBm")).unwrap_or_else(|| "Nearby".to_string()),
-        });
+        found.push(NearbyPebble { id: pebble_id(&name), name, identifier: format!("{:?}", peripheral.id()), rssi: properties.rssi.map(|v| format!("{v} dBm")).unwrap_or_else(|| "Nearby".to_string()) });
     }
-    adapter.stop_scan().await.map_err(|e| format!("Could not stop Bluetooth scan: {e}"))?;
     Ok(found)
 }
 
 async fn connect_identifier(state: &AppState, identifier: String) -> Result<NativeStatus, String> {
+    let _ble = state.ble_operation.lock().await;
     let adapter = get_adapter(state).await?;
     let peripherals = scan_adapter(&adapter).await?;
     let peripheral = peripherals.into_iter().find(|p| format!("{:?}", p.id()) == identifier).ok_or_else(|| "That Pebble is no longer nearby".to_string())?;
@@ -111,17 +94,14 @@ async fn connect_identifier(state: &AppState, identifier: String) -> Result<Nati
 }
 
 #[tauri::command]
-async fn connect_pebble(state: State<'_, AppState>, identifier: String) -> Result<NativeStatus, String> {
-    connect_identifier(&state, identifier).await
-}
+async fn connect_pebble(state: State<'_, AppState>, identifier: String) -> Result<NativeStatus, String> { connect_identifier(&state, identifier).await }
 
 #[tauri::command]
-async fn reconnect_pebble(state: State<'_, AppState>, identifier: String) -> Result<NativeStatus, String> {
-    connect_identifier(&state, identifier).await
-}
+async fn reconnect_pebble(state: State<'_, AppState>, identifier: String) -> Result<NativeStatus, String> { connect_identifier(&state, identifier).await }
 
 #[tauri::command]
 async fn disconnect_pebble(state: State<'_, AppState>) -> Result<(), String> {
+    let _ble = state.ble_operation.lock().await;
     if let Some(peripheral) = state.peripheral.lock().await.take() {
         if peripheral.is_connected().await.unwrap_or(false) {
             peripheral.disconnect().await.map_err(|e| format!("Could not disconnect from Pebble: {e}"))?;
@@ -133,23 +113,19 @@ async fn disconnect_pebble(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_status(state: State<'_, AppState>) -> Result<NativeStatus, String> {
+    let _ble = state.ble_operation.lock().await;
     let peripheral = state.peripheral.lock().await.clone().ok_or_else(|| "Pebble is not connected".to_string())?;
     read_status(&peripheral).await
 }
 
-fn spawn(program: &str, args: &[&str], label: &str) -> Result<(), String> {
-    Command::new(program).args(args).spawn().map(|_| ()).map_err(|e| format!("Could not {label}: {e}"))
-}
+fn spawn(program: &str, args: &[&str], label: &str) -> Result<(), String> { Command::new(program).args(args).spawn().map(|_| ()).map_err(|e| format!("Could not {label}: {e}")) }
 
 #[tauri::command]
 fn execute_action(action_type: String, target: String) -> Result<(), String> {
     match action_type.as_str() {
         "open_app" => {
             let command = match target.as_str() {
-                "Visual Studio Code" => "code", "Spotify" => "spotify", "Google Chrome" => "chrome",
-                "Discord" => "discord", "Slack" => "slack", "Notion" => "notion", "Terminal" => "wt",
-                "Microsoft Teams" => "msteams", "Figma" => "figma", "Obsidian" => "obsidian", "Zoom" => "zoom",
-                "Apple Music" => "apple-music", "Safari" => "start", "Mail" => "start", "Calendar" => "start",
+                "Visual Studio Code" => "code", "Spotify" => "spotify", "Google Chrome" => "chrome", "Discord" => "discord", "Slack" => "slack", "Notion" => "notion", "Terminal" => "wt", "Microsoft Teams" => "msteams", "Figma" => "figma", "Obsidian" => "obsidian", "Zoom" => "zoom", "Apple Music" => "apple-music", "Safari" => "start", "Mail" => "start", "Calendar" => "start",
                 _ => return Err(format!("No desktop launcher is configured for '{target}'")),
             };
             if command == "start" {
@@ -198,8 +174,7 @@ fn execute_action(action_type: String, target: String) -> Result<(), String> {
             { return Err("Exact Windows volume control is not available without an additional audio driver. Use Run Command for a device-specific volume action.".to_string()); }
             #[cfg(all(unix, not(target_os = "macos")))]
             { return spawn("pactl", &["set-sink-volume", "@DEFAULT_SINK@", &format!("{level}%")], "change volume"); }
-            #[allow(unreachable_code)]
-            Ok(())
+            #[allow(unreachable_code)] Ok(())
         }
         "focus_mode" => {
             #[cfg(target_os = "windows")]
