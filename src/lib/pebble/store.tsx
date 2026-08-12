@@ -28,45 +28,20 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
   const unconfiguredDockId = device.dock != null && !docks.some((d) => d.id === device.dock) ? device.dock : null;
   const runSequence = useCallback((dock: Dock) => { timers.current.forEach(clearTimeout); timers.current = []; setPhase("detected"); setRanActions(0); timers.current.push(setTimeout(() => setPhase("activating"), 700)); dock.actions.forEach((action, i) => timers.current.push(setTimeout(() => void hardware.runAction(action.type, action.target).then(() => setRanActions(i + 1)).catch((e) => console.error("Pebble action failed", e)), 1100 + i * 650))); timers.current.push(setTimeout(() => { setPhase("active"); log({ kind: "activated", title: dock.name, detail: "Workspace activated" }); }, 1200 + dock.actions.length * 650)); }, [log]);
   const applyDeviceState = useCallback((next: DeviceState) => { setDevice((p) => ({ ...p, ...next, name: next.name || p.name, identifier: next.identifier || p.identifier })); const oldDock = previousDock.current, nextDock = next.dock; previousDock.current = nextDock; if (oldDock === nextDock) return; if (nextDock == null) { timers.current.forEach(clearTimeout); setPhase("idle"); setRanActions(0); if (oldDock != null) log({ kind: "removed", title: "Pebble removed", detail: docks.find((d) => d.id === oldDock)?.name ?? "Dock removed" }); return; } const dock = docks.find((d) => d.id === nextDock); if (dock?.enabled) runSequence(dock); else setPhase("detected"); }, [docks, log, runSequence]);
-  const refreshStatus = useCallback(async () => { if (!device.identifier || pollInFlight.current) return; pollInFlight.current = true; try { applyDeviceState(await hardware.getStatus()); } catch (error) { console.warn("Could not refresh Pebble status", error); setDevice((p) => ({ ...p, connected: false, charging: false })); } finally { pollInFlight.current = false; } }, [applyDeviceState, device.identifier]);
-
-  // First-run setup is intentionally kept local after pairing. Once the dock has
-  // been identified, release the native BLE connection before the naming screen.
-  // This prevents btleplug/Windows BLE work from competing with the WebView input
-  // loop while the user is typing or choosing setup options. The identifier is
-  // retained in React state so normal reconnect resumes when onboarding finishes.
-  useEffect(() => {
-    if (!hydrated || onboarded || !device.identifier || device.dock == null || !device.connected) return;
-    void hardware.disconnectPebble().then(() => {
-      setDevice((p) => ({ ...p, connected: false }));
-    }).catch((error) => console.warn("Could not pause Pebble Bluetooth during dock setup", error));
-  }, [hydrated, onboarded, device.identifier, device.dock, device.connected]);
+  const refreshStatus = useCallback(async () => {
+    // DockSetup performs its own one-shot hardware reads while mounted. Never
+    // let the background loop compete with that screen or with text input.
+    if (typeof window !== "undefined" && (window as typeof window & { __PEBBLE_DOCK_SETUP__?: boolean }).__PEBBLE_DOCK_SETUP__) return;
+    if (!device.identifier || pollInFlight.current) return; pollInFlight.current = true;
+    try { applyDeviceState(await hardware.getStatus()); } catch (error) { console.warn("Could not refresh Pebble status", error); setDevice((p) => ({ ...p, connected: false, charging: false })); } finally { pollInFlight.current = false; }
+  }, [applyDeviceState, device.identifier]);
 
   useEffect(() => {
-    if (!hydrated || !device.identifier || !onboarded) {
-      if (polling.current) clearInterval(polling.current);
-      polling.current = null;
-      return;
-    }
-
+    if (!hydrated || !device.identifier || !onboarded) { if (polling.current) clearInterval(polling.current); polling.current = null; return; }
     let cancelled = false;
-    if (skipReconnect.current) {
-      skipReconnect.current = false;
-    } else {
-      void (async () => {
-        try {
-          const next = await hardware.reconnectPebble(device.identifier);
-          if (cancelled) return;
-          previousDock.current = next.dock;
-          setDevice(next);
-          if (next.dock != null) {
-            const dock = docks.find((d) => d.id === next.dock);
-            if (dock?.enabled) runSequence(dock); else setPhase("detected");
-          }
-        } catch (error) { console.warn("Could not reconnect to Pebble", error); }
-      })();
+    if (skipReconnect.current) { skipReconnect.current = false; } else {
+      void (async () => { try { const next = await hardware.reconnectPebble(device.identifier); if (cancelled) return; previousDock.current = next.dock; setDevice(next); if (next.dock != null) { const dock = docks.find((d) => d.id === next.dock); if (dock?.enabled) runSequence(dock); else setPhase("detected"); } } catch (error) { console.warn("Could not reconnect to Pebble", error); } })();
     }
-
     polling.current = setInterval(() => void refreshStatus(), 3000);
     return () => { cancelled = true; if (polling.current) clearInterval(polling.current); polling.current = null; };
   }, [hydrated, device.identifier, onboarded]);
