@@ -30,11 +30,18 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
   const applyDeviceState = useCallback((next: DeviceState) => { setDevice((p) => ({ ...p, ...next, name: next.name || p.name, identifier: next.identifier || p.identifier })); const oldDock = previousDock.current, nextDock = next.dock; previousDock.current = nextDock; if (oldDock === nextDock) return; if (nextDock == null) { timers.current.forEach(clearTimeout); setPhase("idle"); setRanActions(0); if (oldDock != null) log({ kind: "removed", title: "Pebble removed", detail: docks.find((d) => d.id === oldDock)?.name ?? "Dock removed" }); return; } const dock = docks.find((d) => d.id === nextDock); if (dock?.enabled) runSequence(dock); else setPhase("detected"); }, [docks, log, runSequence]);
   const refreshStatus = useCallback(async () => { if (!device.identifier || pollInFlight.current) return; pollInFlight.current = true; try { applyDeviceState(await hardware.getStatus()); } catch (error) { console.warn("Could not refresh Pebble status", error); setDevice((p) => ({ ...p, connected: false, charging: false })); } finally { pollInFlight.current = false; } }, [applyDeviceState, device.identifier]);
 
-  // IMPORTANT: first-run setup must be entirely local after pairing.
-  // No reconnect, GATT reads, intervals, or Bluetooth status calls are allowed
-  // while the user is naming/configuring the dock. Native BLE work can block the
-  // Windows webview when btleplug is busy, which is why the previous implementation
-  // could show the page but make every control appear dead.
+  // First-run setup is intentionally kept local after pairing. Once the dock has
+  // been identified, release the native BLE connection before the naming screen.
+  // This prevents btleplug/Windows BLE work from competing with the WebView input
+  // loop while the user is typing or choosing setup options. The identifier is
+  // retained in React state so normal reconnect resumes when onboarding finishes.
+  useEffect(() => {
+    if (!hydrated || onboarded || !device.identifier || device.dock == null || !device.connected) return;
+    void hardware.disconnectPebble().then(() => {
+      setDevice((p) => ({ ...p, connected: false }));
+    }).catch((error) => console.warn("Could not pause Pebble Bluetooth during dock setup", error));
+  }, [hydrated, onboarded, device.identifier, device.dock, device.connected]);
+
   useEffect(() => {
     if (!hydrated || !device.identifier || !onboarded) {
       if (polling.current) clearInterval(polling.current);
