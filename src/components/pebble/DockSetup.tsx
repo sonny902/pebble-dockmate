@@ -28,13 +28,20 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
   const [name, setName] = useState("");
   const [actions, setActions] = useState<DockAction[]>([]);
 
-  // While this screen is mounted it owns BLE status reads. The normal background
-  // poller is explicitly told to stand down, and reads are strictly sequential
-  // so a slow Windows BLE request can never pile up behind another one.
+  // Keep the background status loop paused for the entire setup component,
+  // including the naming/actions screens. Otherwise it can start a native BLE
+  // read again immediately after dock detection and starve WebView input.
   useEffect(() => {
-    if (!detecting) return;
     const win = window as typeof window & { __PEBBLE_DOCK_SETUP__?: boolean };
     win.__PEBBLE_DOCK_SETUP__ = true;
+    return () => { win.__PEBBLE_DOCK_SETUP__ = false; };
+  }, []);
+
+  // Dock detection owns hardware reads while this screen is waiting. Reads are
+  // strictly sequential so a slow Windows BLE request can never pile up behind
+  // another one.
+  useEffect(() => {
+    if (!detecting) return;
     let cancelled = false;
     let readInFlight = false;
     let timer: number | undefined;
@@ -58,11 +65,7 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
     };
 
     void read();
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-      win.__PEBBLE_DOCK_SETUP__ = false;
-    };
+    return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
   }, [detecting, getDock, placeOnDock]);
 
   useEffect(() => {
@@ -72,38 +75,24 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
   }, [detecting, step, dockId, existing]);
 
   const goBack = () => {
-    if (step === "waiting" || step === "duplicate" || step === "done") {
-      if (onExit) onExit(); else navigate({ to: "/docks" });
-      return;
-    }
+    if (step === "waiting" || step === "duplicate" || step === "done") { if (onExit) onExit(); else navigate({ to: "/docks" }); return; }
     setStep(step === "actions" ? "name" : "waiting");
   };
   const finish = () => { if (onFinish) onFinish(); else navigate({ to: "/docks" }); };
-  const handleSave = () => {
-    if (dockId == null) return;
-    saveDock({ id: dockId, name: name.trim(), actions });
-    toast.success(`${name.trim()} saved`, { description: `${actions.length} action${actions.length === 1 ? "" : "s"} configured` });
-    setStep("done");
-  };
+  const handleSave = () => { if (dockId == null) return; saveDock({ id: dockId, name: name.trim(), actions }); toast.success(`${name.trim()} saved`, { description: `${actions.length} action${actions.length === 1 ? "" : "s"} configured` }); setStep("done"); };
   const progressIndex = Math.max(0, PROGRESS.indexOf(step === "duplicate" ? "waiting" : step));
 
-  return (
-    <div className="mx-auto w-full max-w-xl px-4 pt-6 pb-10 sm:px-6 lg:pt-10">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
-        <button type="button" onClick={goBack} className="press hover:bg-accent -ml-2 flex h-10 w-10 items-center justify-center rounded-full" aria-label="Back"><ArrowLeft className="h-5 w-5" /></button>
-        <div className="flex justify-center gap-1.5">{PROGRESS.map((s, i) => <span key={s} className={cn("h-1 rounded-full transition-all duration-500", i <= progressIndex ? "bg-primary w-7" : "bg-muted w-4")} />)}</div>
-        <span className="w-10" />
-      </div>
-      <div key={step} className="animate-rise mt-8">
-        {step === "waiting" ? <StepWaiting detecting={detecting} first={first} /> : null}
-        {step === "duplicate" && existing ? <StepDuplicate dock={existing} onExit={onExit} /> : null}
-        {step === "name" ? <StepName name={name} setName={setName} onContinue={() => setStep("actions")} /> : null}
-        {step === "actions" ? <StepActions name={name} actions={actions} setActions={setActions} onSave={handleSave} /> : null}
-        {step === "done" ? <StepDone name={name} actions={actions} onFinish={finish} /> : null}
-      </div>
-      {step === "waiting" && !device.connected ? <p className="text-muted-foreground mt-6 text-center text-[0.8125rem]">Pebble isn’t nearby — setup will continue when it reconnects.</p> : null}
+  return <div className="mx-auto w-full max-w-xl px-4 pt-6 pb-10 sm:px-6 lg:pt-10">
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3"><button type="button" onClick={goBack} className="press hover:bg-accent -ml-2 flex h-10 w-10 items-center justify-center rounded-full" aria-label="Back"><ArrowLeft className="h-5 w-5" /></button><div className="flex justify-center gap-1.5">{PROGRESS.map((s, i) => <span key={s} className={cn("h-1 rounded-full transition-all duration-500", i <= progressIndex ? "bg-primary w-7" : "bg-muted w-4")} />)}</div><span className="w-10" /></div>
+    <div key={step} className="animate-rise mt-8">
+      {step === "waiting" ? <StepWaiting detecting={detecting} first={first} /> : null}
+      {step === "duplicate" && existing ? <StepDuplicate dock={existing} onExit={onExit} /> : null}
+      {step === "name" ? <StepName name={name} setName={setName} onContinue={() => setStep("actions")} /> : null}
+      {step === "actions" ? <StepActions name={name} actions={actions} setActions={setActions} onSave={handleSave} /> : null}
+      {step === "done" ? <StepDone name={name} actions={actions} onFinish={finish} /> : null}
     </div>
-  );
+    {step === "waiting" && !device.connected ? <p className="text-muted-foreground mt-6 text-center text-[0.8125rem]">Pebble isn’t nearby — setup will continue when it reconnects.</p> : null}
+  </div>;
 }
 function Title({ title, subtitle }: { title: string; subtitle?: string | undefined }) { return <div className="mb-7 text-center"><h1 className="text-balance-tight text-2xl font-semibold">{title}</h1>{subtitle ? <p className="text-muted-foreground mt-2 text-[0.9375rem] text-pretty">{subtitle}</p> : null}</div>; }
 function StepWaiting({ detecting, first }: { detecting: boolean; first: boolean }) { return <div><Title title={detecting ? (first ? "Now set up your first dock" : "Add a new dock") : "Dock detected"} subtitle={detecting ? (first ? "Place your Pebble on the dock you want to set up." : "Place your Pebble on the new dock.") : "This dock is new. Let’s make it yours."} /><div className="surface flex flex-col items-center px-6 py-12"><PebbleVisual size="lg" state={detecting ? "searching" : "docked"} /><div className="mt-8 h-6">{detecting ? <div className="text-muted-foreground flex items-center gap-2 text-sm"><span className="border-primary/30 border-t-primary h-3.5 w-3.5 animate-spin rounded-full border-2" />Waiting for a dock…</div> : <div className="text-success animate-check flex items-center gap-2 text-sm font-medium"><Check className="h-4 w-4" /> Dock detected</div>}</div></div></div>; }
