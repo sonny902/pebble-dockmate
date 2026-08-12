@@ -8,8 +8,15 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
   tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
-    server: { entry: "server" },
+    // Pebble is a Tauri desktop app, so it needs a fully static frontend.
+    // Generate the SPA shell as index.html so Tauri can load it from frontendDist.
+    spa: {
+      enabled: true,
+      prerender: {
+        outputPath: "/index.html",
+        crawlLinks: false,
+        retryCount: 0,
+      },
+    },
   },
 });
