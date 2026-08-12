@@ -30,13 +30,13 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
   const applyDeviceState = useCallback((next: DeviceState) => { setDevice((p) => ({ ...p, ...next, name: next.name || p.name, identifier: next.identifier || p.identifier })); const oldDock = previousDock.current, nextDock = next.dock; previousDock.current = nextDock; if (oldDock === nextDock) return; if (nextDock == null) { timers.current.forEach(clearTimeout); setPhase("idle"); setRanActions(0); if (oldDock != null) log({ kind: "removed", title: "Pebble removed", detail: docks.find((d) => d.id === oldDock)?.name ?? "Dock removed" }); return; } const dock = docks.find((d) => d.id === nextDock); if (dock?.enabled) runSequence(dock); else setPhase("detected"); }, [docks, log, runSequence]);
   const refreshStatus = useCallback(async () => { if (!device.identifier || pollInFlight.current) return; pollInFlight.current = true; try { applyDeviceState(await hardware.getStatus()); } catch (error) { console.warn("Could not refresh Pebble status", error); setDevice((p) => ({ ...p, connected: false, charging: false })); } finally { pollInFlight.current = false; } }, [applyDeviceState, device.identifier]);
 
-  // During first-time dock setup, stop polling as soon as a dock is detected.
-  // The setup UI is then fully local and responsive while the user types/selects actions.
-  // Once onboarding is complete, normal polling resumes for dock insertion/removal.
+  // IMPORTANT: first-run setup must be entirely local after pairing.
+  // No reconnect, GATT reads, intervals, or Bluetooth status calls are allowed
+  // while the user is naming/configuring the dock. Native BLE work can block the
+  // Windows webview when btleplug is busy, which is why the previous implementation
+  // could show the page but make every control appear dead.
   useEffect(() => {
-    if (!hydrated || !device.identifier) return;
-    const shouldPoll = onboarded || device.dock == null;
-    if (!shouldPoll) {
+    if (!hydrated || !device.identifier || !onboarded) {
       if (polling.current) clearInterval(polling.current);
       polling.current = null;
       return;
@@ -60,9 +60,9 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
       })();
     }
 
-    polling.current = setInterval(() => void refreshStatus(), 2500);
+    polling.current = setInterval(() => void refreshStatus(), 3000);
     return () => { cancelled = true; if (polling.current) clearInterval(polling.current); polling.current = null; };
-  }, [hydrated, device.identifier, device.dock, onboarded, refreshStatus, docks, runSequence]);
+  }, [hydrated, device.identifier, onboarded]);
 
   const discoverPebbles = useCallback(() => hardware.scanPebbles(), []);
   const pairPebble = useCallback(async (pebble: NearbyPebble) => { const next = await hardware.connectPebble(pebble); skipReconnect.current = true; previousDock.current = next.dock; setDevice(next); setPhase(next.dock == null ? "idle" : "detected"); setRanActions(0); log({ kind: "connected", title: next.name, detail: "Bluetooth link established" }); }, [log]);
