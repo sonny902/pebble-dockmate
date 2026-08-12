@@ -16,6 +16,9 @@ jobs:
       - run: bun install
       - run: bun run lint
       - run: bun run build
+      - run: bun run build:desktop
+      - name: Verify desktop entry
+        run: test -f dist/index.html
 
   rust:
     runs-on: windows-latest
