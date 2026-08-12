@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "build:desktop": "vite build --config vite.tauri.config.ts",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "prettier --write . && eslint .",
