@@ -27,6 +27,19 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
 
+      - name: Build frontend
+        run: bun run build
+
+      - name: Verify Tauri frontend entry
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ".output/public/index.html")) {
+            Write-Error "Pebble build did not produce .output/public/index.html"
+            Get-ChildItem -Recurse ".output/public" | Select-Object FullName
+            exit 1
+          }
+          Write-Host "Found .output/public/index.html"
+
       - name: Build and publish installers
         uses: tauri-apps/tauri-action@v0
         env:
