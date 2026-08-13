@@ -29,12 +29,6 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
   const baselineDock = useRef<number | null>(device.dock);
 
   useEffect(() => {
-    const win = window as typeof window & { __PEBBLE_DOCK_SETUP__?: boolean };
-    win.__PEBBLE_DOCK_SETUP__ = true;
-    return () => { win.__PEBBLE_DOCK_SETUP__ = false; };
-  }, []);
-
-  useEffect(() => {
     if (step !== "name") return;
     const input = nameInputRef.current;
     if (!input) return;
@@ -51,9 +45,6 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
     const acceptDock = (currentDock: number, connected: boolean, charging: boolean) => {
       if (cancelled) return;
       const found = getDock(currentDock) ?? null;
-      // Keep the provider's device state in sync with the status that actually
-      // caused setup to advance. This matters when adding dock B while Pebble
-      // was previously associated with dock A.
       placeOnDock(currentDock, connected, charging);
       setDockId(currentDock);
       setExisting(found);
@@ -64,34 +55,24 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
       if (cancelled || inFlight) return;
       inFlight = true;
       try {
-        const status = await Promise.race([
-          hardware.getStatus(),
-          new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("status timeout")), 2000)),
+        const dock = await Promise.race([
+          hardware.getDockId(),
+          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 2000)),
         ]);
         if (cancelled) return;
-        const currentDock = status.dock === 0 ? null : status.dock;
-        if (currentDock == null) return;
-
-        const found = getDock(currentDock) ?? null;
-        const baseline = baselineDock.current;
-        const isNewPlacement = baseline == null || currentDock !== baseline;
-        const isUnconfiguredCurrentDock = !found && currentDock === baseline;
-
-        if (first || isNewPlacement || isUnconfiguredCurrentDock) {
-          acceptDock(currentDock, status.connected, status.charging);
+        if (dock != null && dock !== 0) {
+          acceptDock(dock, device.connected, device.charging);
           return;
         }
       } catch {
-        // Windows BLE can briefly fail while characteristics are settling.
-        // Stay on the waiting screen and retry rather than locking the UI.
+        // Retry after transient BLE failures.
       } finally {
         inFlight = false;
         if (!cancelled && step === "waiting") timer = window.setTimeout(() => void detect(), 750);
       }
     };
 
-    // Fast path: the pairing/reconnect layer has already read the dock ID.
-    // Do not perform another BLE round-trip for first setup.
+    // Fast path: connection already supplied the dock ID. No second BLE read.
     if (device.dock != null) {
       const found = getDock(device.dock) ?? null;
       if (first || found == null) {
@@ -126,25 +107,7 @@ export function DockSetup({ onFinish, onExit }: { onFinish?: (() => void) | unde
 
   const progressIndex = Math.max(0, PROGRESS.indexOf(step === "duplicate" ? "waiting" : step));
 
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto w-full max-w-xl px-4 pt-6 pb-10 sm:px-6 lg:pt-10">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
-          <button type="button" onClick={goBack} className="press hover:bg-accent -ml-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full" aria-label="Back"><ArrowLeft className="h-5 w-5" /></button>
-          <div className="flex justify-center gap-1.5">{PROGRESS.map((s, i) => <span key={s} className={cn("h-1 rounded-full transition-all duration-500", i <= progressIndex ? "bg-primary w-7" : "bg-muted w-4")} />)}</div>
-          <span className="w-10" />
-        </div>
-        <div className="mt-8">
-          {step === "waiting" ? <StepWaiting first={first} /> : null}
-          {step === "duplicate" && existing ? <StepDuplicate dock={existing} onExit={onExit} /> : null}
-          {step === "name" ? <StepName inputRef={nameInputRef} name={name} setName={setName} onContinue={() => setStep("actions")} /> : null}
-          {step === "actions" ? <StepActions name={name} actions={actions} setActions={setActions} onSave={handleSave} /> : null}
-          {step === "done" ? <StepDone name={name} actions={actions} onFinish={finish} /> : null}
-        </div>
-        {step === "waiting" && !device.connected ? <p className="text-muted-foreground mt-6 text-center text-[0.8125rem]">Pebble isn’t nearby — setup will continue when it reconnects.</p> : null}
-      </div>
-    </div>
-  );
+  return <div className="min-h-screen bg-background"><div className="mx-auto w-full max-w-xl px-4 pt-6 pb-10 sm:px-6 lg:pt-10"><div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3"><button type="button" onClick={goBack} className="press hover:bg-accent -ml-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full" aria-label="Back"><ArrowLeft className="h-5 w-5" /></button><div className="flex justify-center gap-1.5">{PROGRESS.map((s, i) => <span key={s} className={cn("h-1 rounded-full transition-all duration-500", i <= progressIndex ? "bg-primary w-7" : "bg-muted w-4")} />)}</div><span className="w-10" /></div><div className="mt-8">{step === "waiting" ? <StepWaiting first={first} /> : null}{step === "duplicate" && existing ? <StepDuplicate dock={existing} onExit={onExit} /> : null}{step === "name" ? <StepName inputRef={nameInputRef} name={name} setName={setName} onContinue={() => setStep("actions")} /> : null}{step === "actions" ? <StepActions name={name} actions={actions} setActions={setActions} onSave={handleSave} /> : null}{step === "done" ? <StepDone name={name} actions={actions} onFinish={finish} /> : null}</div>{step === "waiting" && !device.connected ? <p className="text-muted-foreground mt-6 text-center text-[0.8125rem]">Pebble isn’t nearby — setup will continue when it reconnects.</p> : null}</div></div>;
 }
 
 function Title({ title, subtitle }: { title: string; subtitle?: string }) { return <div className="mb-7 text-center"><h1 className="text-balance-tight text-2xl font-semibold">{title}</h1>{subtitle ? <p className="text-muted-foreground mt-2 text-[0.9375rem] text-pretty">{subtitle}</p> : null}</div>; }
