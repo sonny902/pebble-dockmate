@@ -47,11 +47,17 @@ async fn scan_adapter(adapter: &Adapter) -> Result<Vec<Peripheral>, String> {
     result
 }
 
+async fn cached_characteristic(state: &AppState, peripheral: &Peripheral) -> Result<Characteristic, String> {
+    if let Some(c) = state.status_characteristic.lock().await.clone() { return Ok(c); }
+    peripheral.discover_services().await.map_err(|e| format!("Could not discover Pebble services: {e}"))?;
+    let status_uuid = Uuid::parse_str(STATUS_UUID).map_err(|e| e.to_string())?;
+    peripheral.characteristics().into_iter().find(|c| c.uuid == status_uuid).ok_or_else(|| "Pebble status characteristic was not found".to_string())
+}
+
 async fn read_status(peripheral: &Peripheral, cached: Option<Characteristic>) -> Result<(NativeStatus, Characteristic), String> {
     if !peripheral.is_connected().await.map_err(|e| format!("Could not read Pebble connection state: {e}"))? {
         peripheral.connect().await.map_err(|e| format!("Could not reconnect to Pebble: {e}"))?;
     }
-
     let characteristic = if let Some(c) = cached {
         c
     } else {
@@ -59,7 +65,6 @@ async fn read_status(peripheral: &Peripheral, cached: Option<Characteristic>) ->
         let status_uuid = Uuid::parse_str(STATUS_UUID).map_err(|e| e.to_string())?;
         peripheral.characteristics().into_iter().find(|c| c.uuid == status_uuid).ok_or_else(|| "Pebble status characteristic was not found".to_string())?
     };
-
     let data = peripheral.read(&characteristic).await.map_err(|e| format!("Could not read Pebble status: {e}"))?;
     let text = String::from_utf8(data).map_err(|e| format!("Invalid Pebble status: {e}"))?;
     let raw: PebbleStatus = serde_json::from_str(&text).map_err(|e| format!("Invalid Pebble JSON: {e}"))?;
@@ -127,6 +132,20 @@ async fn disconnect_pebble(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn get_dock_id(state: State<'_, AppState>) -> Result<u32, String> {
+    let _ble = state.ble_operation.lock().await;
+    let peripheral = state.peripheral.lock().await.clone().ok_or_else(|| "Pebble is not connected".to_string())?;
+    if !peripheral.is_connected().await.map_err(|e| format!("Could not read Pebble connection state: {e}"))? {
+        return Ok(0);
+    }
+    let characteristic = cached_characteristic(&state, &peripheral).await?;
+    let data = peripheral.read(&characteristic).await.map_err(|e| format!("Could not read Pebble dock status: {e}"))?;
+    let text = String::from_utf8(data).map_err(|e| format!("Invalid Pebble status: {e}"))?;
+    let raw: PebbleStatus = serde_json::from_str(&text).map_err(|e| format!("Invalid Pebble JSON: {e}"))?;
+    Ok(raw.dock)
+}
+
+#[tauri::command]
 async fn get_status(state: State<'_, AppState>) -> Result<NativeStatus, String> {
     let _ble = state.ble_operation.lock().await;
     let peripheral = state.peripheral.lock().await.clone().ok_or_else(|| "Pebble is not connected".to_string())?;
@@ -166,7 +185,7 @@ fn execute_action(action_type: String, target: String) -> Result<(), String> {
             #[cfg(target_os = "windows")]
             { spawn("explorer", &[&target], "open the folder") }
             #[cfg(target_os = "macos")]
-            { spawn("open", &[&target], "open the folder") }
+            { spawn("open", &["-a", "Finder", &target], "open the folder") }
             #[cfg(all(unix, not(target_os = "macos")))]
             { spawn("xdg-open", &[&target], "open the folder") }
         }
@@ -196,7 +215,7 @@ fn execute_action(action_type: String, target: String) -> Result<(), String> {
         }
         "focus_mode" => {
             #[cfg(target_os = "windows")]
-            { spawn("start", &["ms-settings:quiethours"], "open Focus settings") }
+            { spawn("cmd", &["/C", "start", "", "ms-settings:quiethours"], "open Focus settings") }
             #[cfg(target_os = "macos")]
             { spawn("open", &["x-apple.systempreferences:com.apple.Focus"], "open Focus settings") }
             #[cfg(all(unix, not(target_os = "macos")))]
@@ -212,7 +231,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![scan_pebbles, connect_pebble, reconnect_pebble, disconnect_pebble, get_status, execute_action])
+        .invoke_handler(tauri::generate_handler![scan_pebbles, connect_pebble, reconnect_pebble, disconnect_pebble, get_dock_id, get_status, execute_action])
         .run(tauri::generate_context!())
         .expect("error while running Pebble Companion");
 }
