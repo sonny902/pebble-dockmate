@@ -25,7 +25,10 @@ export function StatusIndicator({
       <span className="relative flex h-2 w-2 shrink-0">
         {pulse ? (
           <span
-            className={cn("animate-halo absolute inset-0 rounded-full opacity-60", toneMap[tone])}
+            className={cn(
+              "animate-halo pointer-events-none absolute inset-0 rounded-full opacity-60",
+              toneMap[tone],
+            )}
           />
         ) : null}
         <span className={cn("relative h-2 w-2 rounded-full", toneMap[tone])} />
