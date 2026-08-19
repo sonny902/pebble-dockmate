@@ -8,12 +8,7 @@ import { Page } from "@/components/pebble/AppShell";
 import { StatusIndicator } from "@/components/pebble/StatusIndicator";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { usePebble } from "@/lib/pebble/store";
 import type { DockAction } from "@/lib/pebble/types";
 import { toast } from "sonner";
@@ -22,7 +17,10 @@ export const Route = createFileRoute("/docks/$dockId")({
   head: () => ({
     meta: [
       { title: "Dock — Pebble" },
-      { name: "description", content: "Configure what happens when Pebble is placed on this dock." },
+      {
+        name: "description",
+        content: "Configure what happens when Pebble is placed on this dock.",
+      },
       { property: "og:title", content: "Dock — Pebble" },
       {
         property: "og:description",
@@ -36,7 +34,7 @@ export const Route = createFileRoute("/docks/$dockId")({
 function DockDetail() {
   const { dockId } = useParams({ from: "/docks/$dockId" });
   const navigate = useNavigate();
-  const { getDock, updateDock, removeDock, activeDock, placeOnDock, device } = usePebble();
+  const { getDock, updateDock, removeDock, activeDock, runDockNow } = usePebble();
   const dock = getDock(Number(dockId));
   const [picking, setPicking] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -160,23 +158,30 @@ function DockDetail() {
           />
           <Row
             title="Test this dock"
-            subtitle="Simulate placing Pebble here"
+            subtitle="Run these actions on this computer now"
             trailing={
               <Button
                 variant="secondary"
                 size="sm"
                 className="rounded-full"
-                disabled={!device.connected}
+                disabled={dock.actions.length === 0}
                 onClick={() => {
-                  placeOnDock(isActive ? null : dock.id);
-                  navigate({ to: "/" });
+                  runDockNow(dock.id);
+                  toast.success(`Running ${dock.name}`, {
+                    description: `${dock.actions.length} action${dock.actions.length === 1 ? "" : "s"}`,
+                  });
                 }}
               >
-                {isActive ? "Remove" : "Place"}
+                Run now
               </Button>
             }
           />
-          <Row title="Identifier" subtitle="Used by your Pebble" trailing={<span className="text-[0.8125rem]">Dock {dock.id}</span>} />
+
+          <Row
+            title="Identifier"
+            subtitle="Used by your Pebble"
+            trailing={<span className="text-[0.8125rem]">Dock {dock.id}</span>}
+          />
         </Group>
       </Section>
 

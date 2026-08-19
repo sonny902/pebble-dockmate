@@ -36,7 +36,10 @@ export function MobileNavigation() {
                 )}
               >
                 <Icon
-                  className={cn("h-[1.3rem] w-[1.3rem] transition-transform duration-200", active && "scale-105")}
+                  className={cn(
+                    "h-[1.3rem] w-[1.3rem] transition-transform duration-200",
+                    active && "scale-105",
+                  )}
                   strokeWidth={active ? 2.3 : 1.9}
                 />
                 <span className="text-[0.6875rem] font-medium tracking-tight">{label}</span>

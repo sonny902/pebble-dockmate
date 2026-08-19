@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { DesktopSidebar, MobileNavigation } from "./Navigation";
 import { Onboarding } from "./Onboarding";
+import { PreviewBar } from "./PreviewBar";
 import { usePebble } from "@/lib/pebble/store";
 import { cn } from "@/lib/utils";
 
@@ -10,13 +11,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Avoid a hydration mismatch: local state is restored after first paint.
   if (!hydrated) return <div className="bg-background min-h-screen" />;
 
-  if (!onboarded) return <Onboarding />;
+  if (!onboarded)
+    return (
+      <>
+        <Onboarding />
+        <PreviewBar />
+      </>
+    );
 
   return (
     <div className="min-h-screen">
       <DesktopSidebar />
       <MobileNavigation />
       <main className="pb-24 lg:pb-12 lg:pl-[16.5rem]">{children}</main>
+      <PreviewBar />
     </div>
   );
 }

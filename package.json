@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "dev:desktop": "vite dev --config vite.tauri.config.ts",
     "build:desktop": "vite build --config vite.tauri.config.ts",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
@@ -69,7 +70,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
-    "@lovable.dev/vite-tanstack-config": "^2.10.0",
+    "@lovable.dev/vite-tanstack-config": "2.13.1",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

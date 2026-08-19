@@ -51,7 +51,9 @@ export function AccentPicker() {
             aria-pressed={on}
             className={cn(
               "press relative flex h-10 w-10 items-center justify-center rounded-full transition-all duration-200",
-              on ? "ring-foreground/60 ring-2 ring-offset-2 ring-offset-[var(--color-elevated)]" : "",
+              on
+                ? "ring-foreground/60 ring-2 ring-offset-2 ring-offset-[var(--color-elevated)]"
+                : "",
             )}
             style={{ backgroundColor: a.color }}
           >

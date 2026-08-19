@@ -58,7 +58,12 @@ function Home() {
         <Section title={phase === "active" ? "Workspace active" : "Activating workspace…"}>
           <Group>
             {activeDock.actions.map((a, i) => (
-              <ActionRow key={a.id} action={a} index={i} done={phase === "active" || i < ranActions} />
+              <ActionRow
+                key={a.id}
+                action={a}
+                index={i}
+                done={phase === "active" || i < ranActions}
+              />
             ))}
             {activeDock.actions.length === 0 ? (
               <EmptyState
