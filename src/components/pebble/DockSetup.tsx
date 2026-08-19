@@ -55,8 +55,12 @@ export function DockSetup({
       else void navigate({ to: "/docks" });
       return;
     }
+    if (step === "name") {
+      setDockId(null);
+      setExisting(null);
+    }
     setStep(step === "actions" ? "name" : "waiting");
-  };
+
 
   const finish = () => {
     if (onFinish) onFinish();
