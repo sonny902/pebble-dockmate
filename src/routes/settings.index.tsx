@@ -8,6 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { ACTION_DEFINITIONS, ACTION_ICONS } from "@/lib/pebble/catalog";
 import { usePebble } from "@/lib/pebble/store";
+import { useActionSupport } from "@/lib/pebble/support";
+
 import { useTheme, PRESETS } from "@/lib/theme";
 
 export const Route = createFileRoute("/settings/")({
