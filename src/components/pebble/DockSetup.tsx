@@ -36,15 +36,18 @@ export function DockSetup({
   const [actions, setActions] = useState<DockAction[]>([]);
 
   // The store owns the only status poller; this step just reacts to it.
+  // "duplicate" stays live too, so moving the Pebble onto a different dock
+  // continues the flow without the user having to start over.
   useEffect(() => {
-    if (step !== "waiting") return;
+    if (step !== "waiting" && step !== "duplicate") return;
     const detected = device.dock;
-    if (detected == null) return;
+    if (detected == null || detected === dockId) return;
     const found = getDock(detected) ?? null;
     setDockId(detected);
     setExisting(found);
     setStep(found ? "duplicate" : "name");
-  }, [step, device.dock, getDock]);
+  }, [step, dockId, device.dock, getDock]);
+
 
   const goBack = () => {
     if (step === "waiting" || step === "duplicate" || step === "done") {
