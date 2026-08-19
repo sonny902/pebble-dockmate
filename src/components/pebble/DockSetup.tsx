@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Check, Sparkles } from "lucide-react";
 import { ActionPicker } from "./ActionPicker";
@@ -34,20 +34,27 @@ export function DockSetup({
   const [existing, setExisting] = useState<Dock | null>(null);
   const [name, setName] = useState("");
   const [actions, setActions] = useState<DockAction[]>([]);
+  const [checking, setChecking] = useState(false);
 
-  // The store owns the only status poller; this step just reacts to it.
-  // "duplicate" stays live too, so moving the Pebble onto a different dock
-  // continues the flow without the user having to start over.
-  useEffect(() => {
-    if (step !== "waiting" && step !== "duplicate") return;
+  const checkForDock = () => {
+    if (checking) return;
+    setChecking(true);
+
     const detected = device.dock;
-    if (detected == null || detected === dockId) return;
+    if (detected == null) {
+      toast.info("No dock detected", {
+        description: "Place your Pebble on the dock, then check again.",
+      });
+      setChecking(false);
+      return;
+    }
+
     const found = getDock(detected) ?? null;
     setDockId(detected);
     setExisting(found);
     setStep(found ? "duplicate" : "name");
-  }, [step, dockId, device.dock, getDock]);
-
+    setChecking(false);
+  };
 
   const goBack = () => {
     if (step === "waiting" || step === "duplicate" || step === "done") {
@@ -61,9 +68,6 @@ export function DockSetup({
     }
     setStep(step === "actions" ? "name" : "waiting");
   };
-
-
-
 
   const finish = () => {
     if (onFinish) onFinish();
@@ -109,7 +113,9 @@ export function DockSetup({
         </div>
 
         <div className="mt-8">
-          {step === "waiting" ? <StepWaiting first={first} /> : null}
+          {step === "waiting" ? (
+            <StepWaiting first={first} checking={checking} onCheck={checkForDock} />
+          ) : null}
           {step === "duplicate" && existing ? (
             <StepDuplicate dock={existing} onExit={onExit} />
           ) : null}
@@ -134,7 +140,7 @@ export function DockSetup({
 
         {step === "waiting" && !device.connected ? (
           <p className="text-muted-foreground mt-6 text-center text-[0.8125rem]">
-            Pebble isn’t connected — setup continues automatically once it reconnects.
+            Pebble isn’t connected — connect it first, then check for the dock.
           </p>
         ) : null}
       </div>
@@ -153,7 +159,15 @@ function Title({ title, subtitle }: { title: string; subtitle?: string }) {
   );
 }
 
-function StepWaiting({ first }: { first: boolean }) {
+function StepWaiting({
+  first,
+  checking,
+  onCheck,
+}: {
+  first: boolean;
+  checking: boolean;
+  onCheck: () => void;
+}) {
   return (
     <div>
       <Title
@@ -166,10 +180,18 @@ function StepWaiting({ first }: { first: boolean }) {
       />
       <div className="surface flex flex-col items-center px-6 py-12">
         <PebbleVisual size="lg" state="searching" />
-        <div className="text-muted-foreground mt-8 flex items-center gap-2 text-sm">
-          <span className="border-primary/30 border-t-primary h-3.5 w-3.5 animate-spin rounded-full border-2" />
-          Waiting for a dock…
-        </div>
+        <p className="text-muted-foreground mt-8 text-center text-sm">
+          Place your Pebble on the dock, then check for it.
+        </p>
+        <Button
+          type="button"
+          size="lg"
+          className="mt-6 h-12 w-full max-w-sm rounded-[var(--radius-xl)]"
+          disabled={checking}
+          onClick={onCheck}
+        >
+          {checking ? "Checking…" : "Check for dock"}
+        </Button>
       </div>
     </div>
   );
