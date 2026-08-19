@@ -14,8 +14,12 @@ export function PreviewBar() {
   useEffect(() => {
     setNative(isNativeRuntime());
     setDock(preview.dock);
-    return preview.subscribe(() => setDock(preview.dock));
+    const unsubscribe = preview.subscribe(() => setDock(preview.dock));
+    return () => {
+      unsubscribe();
+    };
   }, []);
+
 
   if (native) return null;
 
