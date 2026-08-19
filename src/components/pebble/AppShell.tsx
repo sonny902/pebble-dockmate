@@ -29,7 +29,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-
 export function Page({
   children,
   className,

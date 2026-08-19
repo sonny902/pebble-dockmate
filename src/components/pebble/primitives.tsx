@@ -61,7 +61,13 @@ export function Section({
 }
 
 /** A grouped list container with hairline dividers — the core surface of Pebble. */
-export function Group({ children, className }: { children: ReactNode; className?: string | undefined }) {
+export function Group({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string | undefined;
+}) {
   return <div className={cn("surface hairline-y overflow-hidden", className)}>{children}</div>;
 }
 

@@ -30,7 +30,11 @@ function dayLabel(ts: number) {
 }
 
 function time(ts: number) {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+  return new Date(ts).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function EventRow({ event }: { event: ActivityEvent }) {
@@ -48,7 +52,9 @@ function EventRow({ event }: { event: ActivityEvent }) {
       <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${dotTone}`} />
       <span className="min-w-0">
         <span className="block truncate text-[0.9375rem] font-medium">{event.title}</span>
-        <span className="text-muted-foreground block truncate text-[0.8125rem]">{event.detail}</span>
+        <span className="text-muted-foreground block truncate text-[0.8125rem]">
+          {event.detail}
+        </span>
       </span>
     </div>
   );

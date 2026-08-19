@@ -21,9 +21,7 @@ function NotFoundComponent() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">Nothing here</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          This page doesn’t exist or has moved.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">This page doesn’t exist or has moved.</p>
         <div className="mt-6">
           <Link
             to="/"

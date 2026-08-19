@@ -8,12 +8,7 @@ import { Page } from "@/components/pebble/AppShell";
 import { StatusIndicator } from "@/components/pebble/StatusIndicator";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { usePebble } from "@/lib/pebble/store";
 import type { DockAction } from "@/lib/pebble/types";
 import { toast } from "sonner";
@@ -22,7 +17,10 @@ export const Route = createFileRoute("/docks/$dockId")({
   head: () => ({
     meta: [
       { title: "Dock — Pebble" },
-      { name: "description", content: "Configure what happens when Pebble is placed on this dock." },
+      {
+        name: "description",
+        content: "Configure what happens when Pebble is placed on this dock.",
+      },
       { property: "og:title", content: "Dock — Pebble" },
       {
         property: "og:description",
@@ -179,7 +177,11 @@ function DockDetail() {
             }
           />
 
-          <Row title="Identifier" subtitle="Used by your Pebble" trailing={<span className="text-[0.8125rem]">Dock {dock.id}</span>} />
+          <Row
+            title="Identifier"
+            subtitle="Used by your Pebble"
+            trailing={<span className="text-[0.8125rem]">Dock {dock.id}</span>}
+          />
         </Group>
       </Section>
 

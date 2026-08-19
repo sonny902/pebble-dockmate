@@ -4,7 +4,15 @@ import { StatusIndicator } from "./StatusIndicator";
 import type { DeviceState, Dock } from "@/lib/pebble/types";
 import { cn } from "@/lib/utils";
 
-function Metric({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode | undefined }) {
+function Metric({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode | undefined;
+}) {
   return (
     <div className="min-w-0 flex-1 px-4 py-3.5 text-center sm:py-4">
       <div className="text-muted-foreground text-[0.75rem] font-medium tracking-wide uppercase">
@@ -57,10 +65,7 @@ export function PebbleStatus({
             {headline}
           </h2>
           <p
-            className={cn(
-              "text-sm font-medium",
-              docked ? "text-primary" : "text-muted-foreground",
-            )}
+            className={cn("text-sm font-medium", docked ? "text-primary" : "text-muted-foreground")}
           >
             {sub}
           </p>

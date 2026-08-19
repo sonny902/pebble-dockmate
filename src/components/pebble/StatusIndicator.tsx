@@ -30,9 +30,7 @@ export function StatusIndicator({
         ) : null}
         <span className={cn("relative h-2 w-2 rounded-full", toneMap[tone])} />
       </span>
-      {label ? (
-        <span className="text-[0.8125rem] font-medium tracking-tight">{label}</span>
-      ) : null}
+      {label ? <span className="text-[0.8125rem] font-medium tracking-tight">{label}</span> : null}
     </span>
   );
 }

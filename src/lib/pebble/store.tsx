@@ -91,8 +91,7 @@ function readPersisted(): Partial<PersistedState> | null {
     return {
       pebbleId: typeof parsed.pebbleId === "number" ? parsed.pebbleId : null,
       pebbleName: typeof parsed.pebbleName === "string" ? parsed.pebbleName : "Pebble",
-      pebbleIdentifier:
-        typeof parsed.pebbleIdentifier === "string" ? parsed.pebbleIdentifier : "",
+      pebbleIdentifier: typeof parsed.pebbleIdentifier === "string" ? parsed.pebbleIdentifier : "",
       onboarded: Boolean(parsed.onboarded),
       docks: Array.isArray(parsed.docks)
         ? parsed.docks.filter(isDock).map((d) => ({ ...d, enabled: d.enabled !== false }))
@@ -410,7 +409,11 @@ export function PebbleProvider({ children }: { children: ReactNode }) {
         reconnectAttempted.current = false;
         setPhase("idle");
         setDevice((prev) => ({ ...prev, connected: false, dock: null, charging: false }));
-        log({ kind: "disconnected", title: "Pebble disconnected", detail: "Bluetooth link closed" });
+        log({
+          kind: "disconnected",
+          title: "Pebble disconnected",
+          detail: "Bluetooth link closed",
+        });
         return;
       }
       if (!device.identifier) return;

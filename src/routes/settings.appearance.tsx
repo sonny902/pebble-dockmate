@@ -12,7 +12,10 @@ export const Route = createFileRoute("/settings/appearance")({
   head: () => ({
     meta: [
       { title: "Appearance — Pebble" },
-      { name: "description", content: "Choose light or dark, an accent colour and a Pebble theme." },
+      {
+        name: "description",
+        content: "Choose light or dark, an accent colour and a Pebble theme.",
+      },
       { property: "og:title", content: "Appearance — Pebble" },
       {
         property: "og:description",

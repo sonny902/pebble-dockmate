@@ -20,7 +20,6 @@ export function PreviewBar() {
     };
   }, []);
 
-
   if (native) return null;
 
   return (

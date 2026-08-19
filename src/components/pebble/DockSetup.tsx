@@ -119,9 +119,7 @@ export function DockSetup({
               onSave={handleSave}
             />
           ) : null}
-          {step === "done" ? (
-            <StepDone name={name} actions={actions} onFinish={finish} />
-          ) : null}
+          {step === "done" ? <StepDone name={name} actions={actions} onFinish={finish} /> : null}
         </div>
 
         {step === "waiting" && !device.connected ? (

@@ -16,7 +16,9 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-const PROMPTS: Partial<Record<ActionType, { title: string; description: string; placeholder: string }>> = {
+const PROMPTS: Partial<
+  Record<ActionType, { title: string; description: string; placeholder: string }>
+> = {
   open_website: {
     title: "Website URL",
     description: "Opened in your default browser when Pebble arrives.",

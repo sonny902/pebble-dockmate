@@ -8,7 +8,10 @@ type SwitchProps = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onChange
 };
 
 const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
-  ({ className, checked = false, onCheckedChange, role = "switch", type = "button", ...props }, ref) => (
+  (
+    { className, checked = false, onCheckedChange, role = "switch", type = "button", ...props },
+    ref,
+  ) => (
     <button
       ref={ref}
       type={type}
