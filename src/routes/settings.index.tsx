@@ -18,8 +18,10 @@ export const Route = createFileRoute("/settings/")({
 function Settings() {
   const { device, docks, setDeviceConnected, forgetPebble } = usePebble();
   const { preset } = useTheme();
+  const { isSupported } = useActionSupport();
   const [advanced, setAdvanced] = useState(false);
   const presetName = PRESETS.find((p) => p.id === preset)?.name ?? "Pebble";
+
 
   return (
     <Page width="narrow" className="space-y-8">
