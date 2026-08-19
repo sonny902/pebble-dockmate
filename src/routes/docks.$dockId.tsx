@@ -160,22 +160,25 @@ function DockDetail() {
           />
           <Row
             title="Test this dock"
-            subtitle="Simulate placing Pebble here"
+            subtitle="Run these actions on this computer now"
             trailing={
               <Button
                 variant="secondary"
                 size="sm"
                 className="rounded-full"
-                disabled={!device.connected}
+                disabled={dock.actions.length === 0}
                 onClick={() => {
-                  placeOnDock(isActive ? null : dock.id);
-                  navigate({ to: "/" });
+                  runDockNow(dock.id);
+                  toast.success(`Running ${dock.name}`, {
+                    description: `${dock.actions.length} action${dock.actions.length === 1 ? "" : "s"}`,
+                  });
                 }}
               >
-                {isActive ? "Remove" : "Place"}
+                Run now
               </Button>
             }
           />
+
           <Row title="Identifier" subtitle="Used by your Pebble" trailing={<span className="text-[0.8125rem]">Dock {dock.id}</span>} />
         </Group>
       </Section>
