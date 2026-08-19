@@ -37,7 +37,7 @@ export function DockCard({
             )}
           />
           {active ? (
-            <span className="bg-primary/25 animate-halo absolute inset-0 rounded-[38%]" />
+            <span className="bg-primary/25 animate-halo pointer-events-none absolute inset-0 rounded-[38%]" />
           ) : null}
         </div>
         <div className="min-w-0">

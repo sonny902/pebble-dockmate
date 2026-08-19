@@ -519,3 +519,23 @@
   text-wrap: balance;
   letter-spacing: -0.014em;
 }
+
+/* Continuous decorative motion is transform/opacity only, and never runs when
+   the user (or a low-power/remote session) asks for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-halo,
+  .animate-sheen,
+  .animate-breathe,
+  .animate-pulse {
+    animation: none !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

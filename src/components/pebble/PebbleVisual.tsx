@@ -27,7 +27,7 @@ export function PebbleVisual({
       {state === "docked" || state === "searching" ? (
         <span
           className={cn(
-            "bg-primary/12 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[62%] rounded-full",
+            "bg-primary/12 pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[62%] rounded-full [will-change:transform,opacity]",
             size === "lg" ? "h-44 w-44" : size === "md" ? "h-36 w-36" : "h-20 w-20",
             state === "searching" ? "animate-halo" : "animate-pulse",
           )}
@@ -48,11 +48,15 @@ export function PebbleVisual({
         }}
       >
         <span
-          className="animate-sheen absolute -inset-x-6 top-0 h-1/2 rounded-[50%] bg-white/25 blur-md"
+          className="animate-sheen pointer-events-none absolute -inset-x-6 top-0 h-1/2 rounded-[50%] [will-change:transform,opacity]"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.10) 55%, rgba(255,255,255,0) 100%)",
+          }}
           aria-hidden
         />
         <span
-          className="absolute inset-0 rounded-[42%] ring-1 ring-white/15 ring-inset"
+          className="pointer-events-none absolute inset-0 rounded-[42%] ring-1 ring-white/15 ring-inset"
           aria-hidden
         />
       </div>
