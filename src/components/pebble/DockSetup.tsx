@@ -60,6 +60,9 @@ export function DockSetup({
       setExisting(null);
     }
     setStep(step === "actions" ? "name" : "waiting");
+  };
+
+
 
 
   const finish = () => {
