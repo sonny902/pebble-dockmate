@@ -36,7 +36,7 @@ export const Route = createFileRoute("/docks/$dockId")({
 function DockDetail() {
   const { dockId } = useParams({ from: "/docks/$dockId" });
   const navigate = useNavigate();
-  const { getDock, updateDock, removeDock, activeDock, placeOnDock, device } = usePebble();
+  const { getDock, updateDock, removeDock, activeDock, runDockNow } = usePebble();
   const dock = getDock(Number(dockId));
   const [picking, setPicking] = useState(false);
   const [renaming, setRenaming] = useState(false);
