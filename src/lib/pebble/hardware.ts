@@ -14,6 +14,13 @@ type NativePebble = { id: number | null; name: string; identifier: string; rssi:
 /** Returned by the native layer when another BLE operation owns the adapter. */
 export const BUSY = "BUSY";
 
+let statusPollingPaused = false;
+
+/** Temporarily stop background status reads while setup UI needs exclusive interaction. */
+export function setStatusPollingPaused(paused: boolean) {
+  statusPollingPaused = paused;
+}
+
 export function isBusyError(error: unknown) {
   return error instanceof Error ? error.message.includes(BUSY) : String(error).includes(BUSY);
 }
@@ -69,6 +76,7 @@ export const hardware = {
   },
 
   async getStatus(): Promise<DeviceState> {
+    if (statusPollingPaused) throw new Error(BUSY);
     if (!isNativeRuntime()) return previewBridge.getStatus();
     return toDevice(await invokeNative<NativeStatus>("get_status"));
   },
