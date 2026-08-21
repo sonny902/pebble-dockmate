@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Check, Sparkles } from "lucide-react";
 import { ActionPicker } from "./ActionPicker";
@@ -7,6 +7,7 @@ import { PebbleVisual } from "./PebbleVisual";
 import { EmptyState, Group } from "./primitives";
 import { Button } from "@/components/ui/button";
 import { DOCK_NAME_SUGGESTIONS, actionLabel } from "@/lib/pebble/catalog";
+import { setStatusPollingPaused } from "@/lib/pebble/hardware";
 import { usePebble } from "@/lib/pebble/store";
 import type { Dock, DockAction } from "@/lib/pebble/types";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,12 @@ export function DockSetup({
   const [name, setName] = useState("");
   const [actions, setActions] = useState<DockAction[]>([]);
   const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    const pausePolling = step !== "waiting";
+    setStatusPollingPaused(pausePolling);
+    return () => setStatusPollingPaused(false);
+  }, [step]);
 
   const checkForDock = () => {
     if (checking) return;
